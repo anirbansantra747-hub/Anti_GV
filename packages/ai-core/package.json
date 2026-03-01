@@ -1,0 +1,12 @@
+{
+  "name": "@antigv/ai-core",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "AI utilities — token counting, context budgeting, diff parsing, prompt templates",
+  "main": "src/index.js",
+  "scripts": {
+    "build": "echo 'No build step for ai-core'",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix"
+  }
+}
