@@ -1,6 +1,6 @@
 # 📋 Anti_GV — Team Rules & Change Log
 
-> Write it down. Every time. No exceptions.
+> Write it down. Every time. No exceptions please 🫠
 
 ---
 
