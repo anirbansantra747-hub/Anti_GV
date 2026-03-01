@@ -1,0 +1,29 @@
+{
+  "name": "@antigv/server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Anti_GV Backend — API, Agent Service, Execution Engine",
+  "scripts": {
+    "dev": "node --watch-path=src src/app.js",
+    "start": "node src/app.js",
+    "build": "echo 'No build step for server'",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix"
+  },
+  "dependencies": {
+    "@antigv/shared": "workspace:*",
+    "@antigv/ai-core": "workspace:*",
+    "express": "^4.21.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.0",
+    "socket.io": "^4.7.0",
+    "jsonwebtoken": "^9.0.0",
+    "mongoose": "^8.0.0",
+    "groq-sdk": "^0.8.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0"
+  }
+}

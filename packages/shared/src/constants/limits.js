@@ -1,0 +1,31 @@
+/**
+ * System-wide limits and budget constants.
+ */
+export const LIMITS = {
+  // Token budgets (Groq free tier)
+  MAX_TOKENS_PER_REQUEST: 6000,
+  SYSTEM_PROMPT_BUDGET: 300,
+  USER_PROMPT_BUDGET: 200,
+  ACTIVE_FILE_BUDGET: 1500,
+  RAG_CHUNKS_BUDGET: 2500,
+  FILE_TREE_BUDGET: 500,
+  CHAT_HISTORY_BUDGET: 700,
+
+  // Context assembly
+  MAX_OPEN_TABS_CONTEXT: 5,
+  MAX_LINES_PER_TAB: 200,
+  MAX_RAG_CHUNKS: 5,
+  MAX_LINES_PER_CHUNK: 500,
+
+  // Execution
+  EXECUTION_TIMEOUT_MS: 10000,
+  EXECUTION_MEMORY_LIMIT_MB: 256,
+
+  // Agent
+  MAX_FIXER_RETRIES: 3,
+  MAX_CHAT_HISTORY_TURNS: 6,
+
+  // File system
+  MAX_FILE_SIZE_BYTES: 100 * 1024, // 100KB - skip files larger than this for RAG
+  AUTOSAVE_DEBOUNCE_MS: 3000,
+};

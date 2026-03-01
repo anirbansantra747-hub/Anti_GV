@@ -1,0 +1,1335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HLD — Online IDE System Architecture</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;600;700&family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:       #080c14;
+  --bg2:      #0c1220;
+  --bg3:      #101828;
+  --card:     #131c2e;
+  --card2:    #18253d;
+  --border:   #1e2d48;
+  --border2:  #253554;
+  --blue:     #3b82f6;
+  --blue2:    #60a5fa;
+  --green:    #22c55e;
+  --green2:   #4ade80;
+  --yellow:   #f59e0b;
+  --yellow2:  #fbbf24;
+  --purple:   #a855f7;
+  --purple2:  #c084fc;
+  --cyan:     #06b6d4;
+  --cyan2:    #22d3ee;
+  --orange:   #f97316;
+  --red:      #ef4444;
+  --text:     #e2e8f0;
+  --text2:    #94a3b8;
+  --text3:    #4b6080;
+  --mono:     'IBM Plex Mono', monospace;
+  --sans:     'Outfit', sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);overflow-x:hidden}
+
+/* ─── HEADER ─── */
+.hdr{
+  padding:32px 48px 24px;
+  border-bottom:1px solid var(--border);
+  background:linear-gradient(180deg,#0b1220 0%,var(--bg) 100%);
+  display:flex; justify-content:space-between; align-items:flex-end;
+}
+.hdr-left .eyebrow{font-family:var(--mono);font-size:11px;color:var(--blue);letter-spacing:3px;text-transform:uppercase;margin-bottom:8px}
+.hdr-left h1{font-size:32px;font-weight:800;line-height:1;background:linear-gradient(120deg,#fff 30%,var(--cyan2) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hdr-left p{color:var(--text2);font-size:14px;margin-top:8px}
+.tabs{display:flex;gap:4px;flex-wrap:wrap}
+.tab{
+  padding:8px 18px;border-radius:8px;font-family:var(--mono);font-size:12px;
+  cursor:pointer;border:1px solid var(--border);color:var(--text3);
+  transition:all .2s;white-space:nowrap;
+}
+.tab:hover{border-color:var(--border2);color:var(--text2)}
+.tab.active{border-color:var(--blue);color:var(--blue2);background:rgba(59,130,246,.08)}
+.tab.t1.active{border-color:var(--cyan);color:var(--cyan2);background:rgba(6,182,212,.08)}
+.tab.t2.active{border-color:var(--yellow);color:var(--yellow2);background:rgba(245,158,11,.08)}
+.tab.t3.active{border-color:var(--green);color:var(--green2);background:rgba(34,197,94,.08)}
+.tab.t4.active{border-color:var(--purple);color:var(--purple2);background:rgba(168,85,247,.08)}
+.tab.t5.active{border-color:var(--orange);color:var(--orange);background:rgba(249,115,22,.08)}
+
+/* ─── PANEL SYSTEM ─── */
+.panel{display:none;padding:40px 48px;animation:fadein .25s ease}
+.panel.active{display:block}
+@keyframes fadein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+/* ─── TAB 0: OVERVIEW (THE IDE LAYOUT) ─── */
+.overview-wrap{display:flex;flex-direction:column;gap:24px}
+.ov-title{font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--text3);text-transform:uppercase;margin-bottom:4px}
+
+/* The IDE mockup */
+.ide-mockup{
+  background:var(--card);
+  border:2px solid var(--border2);
+  border-radius:16px;
+  overflow:hidden;
+  position:relative;
+}
+.ide-titlebar{
+  background:var(--bg2);
+  border-bottom:1px solid var(--border);
+  padding:10px 16px;
+  display:flex;align-items:center;gap:8px;
+}
+.ide-dot{width:12px;height:12px;border-radius:50%}
+.ide-dot.r{background:#ef4444}.ide-dot.y{background:#f59e0b}.ide-dot.g{background:#22c55e}
+.ide-name{font-family:var(--mono);font-size:12px;color:var(--text3);margin-left:12px}
+
+.ide-body{display:grid;grid-template-columns:220px 1fr 260px;grid-template-rows:48px 1fr 120px;height:480px}
+
+/* Topbar */
+.ide-topbar{
+  grid-column:1/-1;
+  background:var(--bg2);
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;padding:0 16px;gap:12px;
+}
+.ide-search{
+  background:var(--bg3);border:1px solid var(--border);border-radius:6px;
+  padding:6px 14px;font-family:var(--mono);font-size:12px;color:var(--text2);
+  flex:1;max-width:400px;display:flex;align-items:center;gap:8px;
+}
+.ide-search-icon{color:var(--text3);font-size:14px}
+.ide-btn{
+  padding:5px 14px;border-radius:6px;font-family:var(--mono);font-size:11px;font-weight:600;
+  cursor:pointer;border:none;
+}
+.ide-btn.run{background:var(--green);color:#000}
+.ide-btn.learn{background:rgba(168,85,247,.15);color:var(--purple2);border:1px solid rgba(168,85,247,.3)}
+
+/* Left panel */
+.ide-left{
+  background:var(--bg3);
+  border-right:1px solid var(--border);
+  padding:12px 0;
+  overflow:hidden;
+}
+.ide-left-title{font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--text3);padding:0 14px 8px;text-transform:uppercase}
+.ide-file{
+  padding:5px 14px 5px 28px;font-size:12px;color:var(--text2);
+  display:flex;align-items:center;gap:6px;cursor:pointer;
+}
+.ide-file:hover{background:rgba(255,255,255,.04)}
+.ide-file.active-f{background:rgba(59,130,246,.08);color:var(--blue2)}
+.ide-file .dot{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+.ide-folder{padding:5px 14px;font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer}
+.ide-folder:hover{background:rgba(255,255,255,.04)}
+
+/* Center editor */
+.ide-center{
+  background:#0d1525;
+  overflow:hidden;
+  position:relative;
+}
+.ide-tabs-bar{
+  background:var(--bg2);
+  border-bottom:1px solid var(--border);
+  display:flex;padding:0 8px;
+}
+.ide-file-tab{
+  padding:6px 16px;font-family:var(--mono);font-size:12px;color:var(--text3);
+  border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap;
+}
+.ide-file-tab.active-t{color:var(--text);border-color:var(--blue)}
+.ide-code{padding:16px;font-family:var(--mono);font-size:12px;line-height:1.9;color:var(--text2)}
+.kw{color:#c084fc}.fn{color:#60a5fa}.str{color:#4ade80}.cm{color:var(--text3);font-style:italic}.num{color:#fb923c}.err-line{background:rgba(239,68,68,.08);border-left:2px solid var(--red)}
+.ln{color:var(--text3);user-select:none;min-width:24px;display:inline-block;text-align:right;margin-right:16px}
+
+/* Right AI panel */
+.ide-right{
+  background:var(--bg3);
+  border-left:1px solid var(--border);
+  display:flex;flex-direction:column;
+  overflow:hidden;
+}
+.ai-header{
+  padding:10px 14px;border-bottom:1px solid var(--border);
+  font-family:var(--mono);font-size:11px;color:var(--purple2);
+  display:flex;align-items:center;gap:8px;
+}
+.ai-chat{flex:1;padding:12px;display:flex;flex-direction:column;gap:8px;overflow:hidden}
+.ai-msg{font-size:12px;line-height:1.5;padding:8px 10px;border-radius:8px}
+.ai-msg.user{background:rgba(59,130,246,.1);color:var(--blue2);align-self:flex-end;max-width:85%}
+.ai-msg.bot{background:rgba(168,85,247,.08);color:var(--text2);border:1px solid rgba(168,85,247,.15);font-size:11px}
+.ai-input{
+  border-top:1px solid var(--border);padding:10px;
+  display:flex;gap:8px;align-items:center;
+}
+.ai-input-box{
+  flex:1;background:var(--bg2);border:1px solid var(--border);border-radius:6px;
+  padding:6px 10px;font-family:var(--mono);font-size:11px;color:var(--text2);
+}
+
+/* Bottom terminal */
+.ide-terminal{
+  grid-column:1/-1;
+  background:#060a10;
+  border-top:1px solid var(--border);
+  padding:10px 16px;
+  overflow:hidden;
+}
+.term-tabs{display:flex;gap:16px;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:6px}
+.term-tab{font-family:var(--mono);font-size:11px;color:var(--text3);cursor:pointer}
+.term-tab.act{color:var(--green2)}
+.term-line{font-family:var(--mono);font-size:12px;line-height:1.7}
+.term-line.out{color:var(--text2)}.term-line.err{color:var(--red)}.term-line.ok{color:var(--green2)}.term-line.prompt{color:var(--cyan2)}
+
+/* Labels on the mockup */
+.ide-label{
+  position:absolute;
+  background:rgba(0,0,0,.85);
+  border:1px solid;
+  border-radius:6px;
+  padding:5px 10px;
+  font-family:var(--mono);
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:1px;
+  text-transform:uppercase;
+  pointer-events:none;
+  white-space:nowrap;
+}
+
+/* LEGEND */
+.legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:16px}
+.leg-item{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2)}
+.leg-dot{width:10px;height:10px;border-radius:3px;flex-shrink:0}
+
+/* ─── FLOW DIAGRAMS ─── */
+.flow-page{display:flex;flex-direction:column;gap:32px}
+.flow-section-title{
+  font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:2px;
+  text-transform:uppercase;margin-bottom:20px;
+  display:flex;align-items:center;gap:12px;
+}
+.flow-section-title .badge{
+  padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;
+}
+
+/* The actual flow diagram canvas */
+.flow-canvas{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:36px 40px;
+  position:relative;
+  overflow:hidden;
+}
+.flow-canvas::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse 60% 40% at 50% 0%,rgba(59,130,246,.04) 0%,transparent 70%);
+  pointer-events:none;
+}
+
+/* Node styles */
+.fnode{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:10px 18px;
+  border-radius:10px;
+  font-family:var(--mono);
+  font-size:12px;
+  font-weight:600;
+  border:2px solid;
+  position:relative;
+  white-space:nowrap;
+  cursor:default;
+  transition:transform .15s;
+}
+.fnode:hover{transform:translateY(-2px)}
+.fnode.blue{color:var(--blue2);border-color:rgba(59,130,246,.4);background:rgba(59,130,246,.08)}
+.fnode.green{color:var(--green2);border-color:rgba(34,197,94,.4);background:rgba(34,197,94,.08)}
+.fnode.yellow{color:var(--yellow2);border-color:rgba(245,158,11,.4);background:rgba(245,158,11,.08)}
+.fnode.purple{color:var(--purple2);border-color:rgba(168,85,247,.4);background:rgba(168,85,247,.08)}
+.fnode.cyan{color:var(--cyan2);border-color:rgba(6,182,212,.4);background:rgba(6,182,212,.08)}
+.fnode.orange{color:var(--orange);border-color:rgba(249,115,22,.4);background:rgba(249,115,22,.08)}
+.fnode.red{color:#f87171;border-color:rgba(239,68,68,.4);background:rgba(239,68,68,.08)}
+.fnode.gray{color:var(--text2);border-color:var(--border2);background:var(--card2)}
+
+.fnode.big{font-size:14px;padding:14px 24px;border-radius:12px;font-weight:700}
+.fnode.small{font-size:11px;padding:7px 12px}
+
+/* Row / column layouts for flow */
+.flow-row{display:flex;align-items:center;gap:0;flex-wrap:wrap}
+.flow-col{display:flex;flex-direction:column;align-items:center;gap:0}
+.flow-grid{display:grid;gap:0}
+
+/* Arrows */
+.arr{
+  color:var(--text3);
+  font-size:22px;
+  padding:0 6px;
+  flex-shrink:0;
+  display:flex;align-items:center;flex-direction:column;
+  font-family:var(--mono);
+}
+.arr .alabel{font-size:9px;color:var(--text3);letter-spacing:.5px;white-space:nowrap;margin-top:2px}
+.arr.down{transform:rotate(90deg)}
+.arr.v{flex-direction:column;padding:4px 0}
+.arr.v::before{content:'';display:block;width:2px;height:16px;background:var(--border2)}
+.arr.v::after{content:'▼';font-size:12px;color:var(--text3)}
+
+/* Swimlane */
+.swimlane{
+  border:1px solid var(--border);
+  border-radius:12px;
+  overflow:hidden;
+  margin-bottom:12px;
+}
+.swimlane-header{
+  padding:10px 20px;
+  font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
+  border-bottom:1px solid var(--border);
+}
+.swimlane-body{padding:20px;display:flex;align-items:center;flex-wrap:wrap;gap:12px}
+
+.sl-browser .swimlane-header{background:rgba(59,130,246,.1);color:var(--blue2)}
+.sl-backend .swimlane-header{background:rgba(168,85,247,.1);color:var(--purple2)}
+.sl-db .swimlane-header{background:rgba(34,197,94,.1);color:var(--green2)}
+.sl-ext .swimlane-header{background:rgba(245,158,11,.1);color:var(--yellow2)}
+
+/* Step timeline */
+.steps-timeline{display:flex;flex-direction:column;gap:0}
+.stt{
+  display:grid;
+  grid-template-columns:40px 4px 1fr;
+  gap:0 16px;
+  min-height:60px;
+}
+.stt-num{
+  display:flex;align-items:flex-start;padding-top:14px;justify-content:center;
+  font-family:var(--mono);font-size:13px;font-weight:700;
+}
+.stt-line{
+  display:flex;flex-direction:column;align-items:center;
+  padding-top:20px;
+}
+.stt-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;border:3px solid;margin-left:-4px}
+.stt-vline{width:2px;flex:1;margin-top:4px}
+.stt-content{padding:12px 0 20px}
+.stt-title{font-weight:700;font-size:14px;margin-bottom:4px}
+.stt-detail{font-size:13px;color:var(--text2);line-height:1.6}
+.stt-code{
+  background:var(--bg);border:1px solid var(--border);border-radius:8px;
+  padding:10px 14px;font-family:var(--mono);font-size:11px;color:var(--text2);
+  margin-top:10px;line-height:1.8;overflow-x:auto;
+}
+.stt-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.stt-chip{
+  padding:3px 10px;border-radius:20px;font-family:var(--mono);font-size:10px;font-weight:700;border:1px solid;
+}
+.chip-b{color:var(--blue2);border-color:rgba(59,130,246,.3);background:rgba(59,130,246,.06)}
+.chip-g{color:var(--green2);border-color:rgba(34,197,94,.3);background:rgba(34,197,94,.06)}
+.chip-y{color:var(--yellow2);border-color:rgba(245,158,11,.3);background:rgba(245,158,11,.06)}
+.chip-p{color:var(--purple2);border-color:rgba(168,85,247,.3);background:rgba(168,85,247,.06)}
+.chip-c{color:var(--cyan2);border-color:rgba(6,182,212,.3);background:rgba(6,182,212,.06)}
+.chip-o{color:var(--orange);border-color:rgba(249,115,22,.3);background:rgba(249,115,22,.06)}
+.chip-r{color:#f87171;border-color:rgba(239,68,68,.3);background:rgba(239,68,68,.06)}
+
+/* Callout */
+.callout{border-radius:10px;padding:14px 18px;margin:12px 0;display:flex;gap:12px;font-size:13px;line-height:1.6}
+.callout.info{background:rgba(59,130,246,.07);border:1px solid rgba(59,130,246,.2);color:var(--blue2)}
+.callout.warn{background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.2);color:var(--yellow2)}
+.callout.ok{background:rgba(34,197,94,.07);border:1px solid rgba(34,197,94,.2);color:var(--green2)}
+.ci{font-size:18px;flex-shrink:0}
+
+/* Two-up layout */
+.two-up{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.three-up{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+
+/* Sub-card */
+.sub-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;overflow:hidden}
+.sub-card-title{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:14px}
+
+/* Big arrow connector */
+.connector{
+  display:flex;justify-content:center;align-items:center;padding:8px 0;
+  font-size:28px;color:var(--border2);
+}
+
+/* Decision diamond */
+.decision{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:140px;height:56px;
+  clip-path:polygon(50% 0%,100% 50%,50% 100%,0% 50%);
+  font-family:var(--mono);font-size:11px;font-weight:700;text-align:center;
+}
+.decision.blue{background:rgba(59,130,246,.2);color:var(--blue2)}
+.decision.green{background:rgba(34,197,94,.2);color:var(--green2)}
+
+@media(max-width:900px){
+  .hdr{flex-direction:column;gap:20px;padding:24px 20px}
+  .panel{padding:24px 20px}
+  .two-up,.three-up{grid-template-columns:1fr}
+  .ide-body{grid-template-columns:1fr;grid-template-rows:auto}
+  .ide-right,.ide-left{display:none}
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="hdr">
+  <div class="hdr-left">
+    <div class="eyebrow">// high-level design</div>
+    <h1>Online IDE Platform</h1>
+    <p>Complete system architecture — 5 modules, all data flows, every tool decision explained</p>
+  </div>
+  <div class="tabs">
+    <div class="tab t0 active" onclick="showPanel(0)">🖥 Overview</div>
+    <div class="tab t1" onclick="showPanel(1)">📁 File System</div>
+    <div class="tab t2" onclick="showPanel(2)">✏️ Editor</div>
+    <div class="tab t3" onclick="showPanel(3)">▶ Code Runner</div>
+    <div class="tab t4" onclick="showPanel(4)">🤖 AI Panel</div>
+    <div class="tab t5" onclick="showPanel(5)">📚 Learning</div>
+  </div>
+</div>
+
+<!-- ════════════════════ PANEL 0: OVERVIEW ════════════════════ -->
+<div class="panel active" id="p0">
+  <div class="overview-wrap">
+    <div>
+      <div class="ov-title">What the user sees — IDE layout</div>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:20px">Every numbered area below is a module. Click a tab above to see its full data flow.</p>
+    </div>
+
+    <!-- IDE Mockup -->
+    <div class="ide-mockup">
+      <div class="ide-titlebar">
+        <div class="ide-dot r"></div>
+        <div class="ide-dot y"></div>
+        <div class="ide-dot g"></div>
+        <div class="ide-name">CodeMind IDE — workspace: my-websocket-app</div>
+      </div>
+      <div style="position:relative">
+        <div class="ide-body">
+          <!-- TOP BAR -->
+          <div class="ide-topbar">
+            <div class="ide-search"><span class="ide-search-icon">⌕</span><span style="color:var(--text3)">Search files, symbols, commands...</span></div>
+            <div style="flex:1"></div>
+            <div class="ide-btn run">▶ Run</div>
+            <div class="ide-btn learn" style="margin-left:8px">📚 Learn</div>
+            <div style="margin-left:16px;display:flex;align-items:center;gap:8px;">
+              <div style="width:28px;height:28px;border-radius:50%;background:var(--blue);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700">U</div>
+            </div>
+          </div>
+
+          <!-- LEFT PANEL -->
+          <div class="ide-left">
+            <div class="ide-left-title">Explorer</div>
+            <div class="ide-folder">▼ 📁 my-websocket-app</div>
+            <div class="ide-file"><div class="dot" style="background:#f59e0b"></div>package.json</div>
+            <div class="ide-folder" style="padding-left:24px">▼ 📁 src</div>
+            <div class="ide-file active-f" style="padding-left:42px"><div class="dot" style="background:#60a5fa"></div>server.js</div>
+            <div class="ide-file" style="padding-left:42px"><div class="dot" style="background:#4ade80"></div>client.js</div>
+            <div class="ide-folder" style="padding-left:24px">▶ 📁 utils</div>
+            <div class="ide-file" style="padding-left:28px"><div class="dot" style="background:#c084fc"></div>index.html</div>
+            <div style="height:1px;background:var(--border);margin:8px 0"></div>
+            <div style="padding:6px 14px;font-size:11px;color:var(--text3);font-family:var(--mono)">+ New File&nbsp;&nbsp;+ New Folder</div>
+          </div>
+
+          <!-- CENTER EDITOR -->
+          <div class="ide-center">
+            <div class="ide-tabs-bar">
+              <div class="ide-file-tab active-t">server.js</div>
+              <div class="ide-file-tab">client.js</div>
+              <div class="ide-file-tab">index.html</div>
+            </div>
+            <div class="ide-code">
+<span class="ln">1</span><span class="kw">const</span> express = <span class="fn">require</span>(<span class="str">'express'</span>)<br>
+<span class="ln">2</span><span class="kw">const</span> http = <span class="fn">require</span>(<span class="str">'http'</span>)<br>
+<span class="ln">3</span><span class="kw">const</span> { Server } = <span class="fn">require</span>(<span class="str">'socket.io'</span>)<br>
+<span class="ln">4</span><br>
+<span class="ln">5</span><span class="kw">const</span> app = <span class="fn">express</span>()<br>
+<span class="ln">6</span><span class="kw">const</span> server = http.<span class="fn">createServer</span>(app)<br>
+<span class="ln">7</span><span class="kw">const</span> io = <span class="kw">new</span> <span class="fn">Server</span>(server)<br>
+<span class="ln">8</span><br>
+<span class="ln" style="color:var(--red)">9</span><span class="err-line">io.<span class="fn">on</span>(<span class="str">'connection'</span>, (socket) => {</span><br>
+<span class="ln">10</span>&nbsp;&nbsp;<span class="cm">// missing semicolon warning here</span>
+            </div>
+          </div>
+
+          <!-- RIGHT AI PANEL -->
+          <div class="ide-right">
+            <div class="ai-header">
+              <span>⬡</span> AI Assistant
+            </div>
+            <div class="ai-chat">
+              <div class="ai-msg user">Fix the WebSocket connection handler</div>
+              <div class="ai-msg bot">I can see the issue on line 9. The connection callback is missing a closing bracket. Here's the fix:</div>
+              <div style="background:rgba(0,0,0,.3);border-radius:6px;padding:8px;font-family:var(--mono);font-size:10px;color:var(--green2);border:1px solid rgba(34,197,94,.1)">
+                io.on('connection', (socket) => {<br>
+                &nbsp;&nbsp;console.log('connected')<br>
+                })  <span style="color:var(--text3)">← added</span>
+              </div>
+              <div style="display:flex;gap:8px;margin-top:4px">
+                <div style="padding:4px 12px;border-radius:6px;background:rgba(34,197,94,.15);color:var(--green2);font-size:11px;font-family:var(--mono);cursor:pointer">✓ Accept</div>
+                <div style="padding:4px 12px;border-radius:6px;background:rgba(239,68,68,.1);color:#f87171;font-size:11px;font-family:var(--mono);cursor:pointer">✗ Reject</div>
+              </div>
+            </div>
+            <div class="ai-input">
+              <div class="ai-input-box">Ask anything about your code...</div>
+            </div>
+          </div>
+
+          <!-- TERMINAL -->
+          <div class="ide-terminal">
+            <div class="term-tabs">
+              <span class="term-tab act">Terminal</span>
+              <span class="term-tab">Output</span>
+              <span class="term-tab">Problems</span>
+            </div>
+            <div class="term-line prompt">$ node src/server.js</div>
+            <div class="term-line ok">✓ Server running on http://localhost:3000</div>
+            <div class="term-line out">WebSocket server ready</div>
+          </div>
+        </div>
+
+        <!-- LABELS -->
+        <div class="ide-label" style="left:4px;top:60px;border-color:var(--yellow);color:var(--yellow2)">① FILE SYSTEM</div>
+        <div class="ide-label" style="left:240px;top:60px;border-color:var(--blue);color:var(--blue2)">② MONACO EDITOR</div>
+        <div class="ide-label" style="right:4px;top:60px;border-color:var(--purple);color:var(--purple2)">④ AI PANEL</div>
+        <div class="ide-label" style="bottom:88px;left:240px;border-color:var(--green);color:var(--green2)">③ CODE RUNNER</div>
+        <div class="ide-label" style="top:4px;left:50%;transform:translateX(-50%);border-color:var(--cyan);color:var(--cyan2)">SEARCH + TOPBAR</div>
+      </div>
+    </div>
+
+    <!-- LEGEND -->
+    <div class="legend">
+      <div class="leg-item"><div class="leg-dot" style="background:var(--yellow)"></div>① Left Panel: File System (memfs + localForage + MongoDB)</div>
+      <div class="leg-item"><div class="leg-dot" style="background:var(--blue)"></div>② Center: Monaco Editor (syntax, lint, autosave)</div>
+      <div class="leg-item"><div class="leg-dot" style="background:var(--green)"></div>③ Bottom: Code Runner (Pyodide / WebContainers / Judge0)</div>
+      <div class="leg-item"><div class="leg-dot" style="background:var(--purple)"></div>④ Right: AI Panel (Groq + Context + Diff Viewer)</div>
+      <div class="leg-item"><div class="leg-dot" style="background:var(--orange)"></div>⑤ Learning Mode (RAG + Roadmap + Exercise Runner)</div>
+    </div>
+
+    <!-- SYSTEM LAYERS -->
+    <div style="margin-top:8px">
+      <div class="ov-title" style="margin-bottom:14px">Full system — what lives where</div>
+      <div class="three-up">
+        <div class="sub-card">
+          <div class="sub-card-title" style="color:var(--blue2)">🖥 Browser (Client)</div>
+          <div style="font-size:12px;color:var(--text2);line-height:1.9;font-family:var(--mono)">
+            React 18 + React Router<br>
+            Monaco Editor<br>
+            memfs (in-memory FS)<br>
+            localForage (IndexedDB)<br>
+            Zustand (state)<br>
+            Pyodide (Python WASM)<br>
+            WebContainers (JS Node)<br>
+            Socket.io client
+          </div>
+        </div>
+        <div class="sub-card">
+          <div class="sub-card-title" style="color:var(--purple2)">⚙️ Backend (Node.js)</div>
+          <div style="font-size:12px;color:var(--text2);line-height:1.9;font-family:var(--mono)">
+            Express.js API server<br>
+            Socket.io server<br>
+            JWT auth middleware<br>
+            Workspace service<br>
+            Execution service<br>
+            AI agent service<br>
+            Learning service<br>
+            Judge0 adapter
+          </div>
+        </div>
+        <div class="sub-card">
+          <div class="sub-card-title" style="color:var(--green2)">🗄 Data + External</div>
+          <div style="font-size:12px;color:var(--text2);line-height:1.9;font-family:var(--mono)">
+            MongoDB Atlas (free)<br>
+            ChromaDB (vector DB)<br>
+            Groq API (LLM primary)<br>
+            Gemini Flash (fallback)<br>
+            Judge0 CE (runner)<br>
+            Railway (hosting)<br>
+            Vercel (frontend)<br>
+            Nomic Embed (vectors)
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ PANEL 1: FILE SYSTEM ════════════════════ -->
+<div class="panel" id="p1">
+<div class="flow-page">
+
+  <div>
+    <div class="flow-section-title" style="color:var(--yellow2)">
+      <span style="font-size:24px">📁</span> MODULE 1 — File System
+      <span class="badge" style="background:rgba(245,158,11,.15);color:var(--yellow2)">LEFT PANEL</span>
+    </div>
+    <p style="color:var(--text2);font-size:14px;max-width:700px">How files and folders are created, stored, edited, deleted — and how they survive a browser refresh. Three storage layers work together: memory → browser → server.</p>
+  </div>
+
+  <!-- 3-layer architecture -->
+  <div class="flow-canvas">
+    <div style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-bottom:24px;letter-spacing:2px;text-transform:uppercase">Storage Architecture — 3 Layers</div>
+    <div style="display:grid;grid-template-columns:1fr 80px 1fr 80px 1fr;gap:0;align-items:center;margin-bottom:24px">
+      <!-- Layer 1 -->
+      <div style="background:rgba(59,130,246,.07);border:2px solid rgba(59,130,246,.3);border-radius:14px;padding:24px;text-align:center">
+        <div style="font-size:28px;margin-bottom:8px">⚡</div>
+        <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--blue2);margin-bottom:8px">LAYER 1 — memfs</div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.7">In-memory file system<br>POSIX-compatible<br>All read/writes go here<br><span style="color:var(--text3)">Lost on page refresh</span></div>
+        <div style="margin-top:12px;padding:6px 10px;background:rgba(59,130,246,.1);border-radius:6px;font-family:var(--mono);font-size:10px;color:var(--blue2)">~0ms latency</div>
+      </div>
+      <!-- Arrow -->
+      <div style="text-align:center;display:flex;flex-direction:column;align-items:center;gap:6px">
+        <div style="font-size:22px;color:var(--text3)">⟷</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--text3)">auto-sync<br>every 3s</div>
+      </div>
+      <!-- Layer 2 -->
+      <div style="background:rgba(245,158,11,.07);border:2px solid rgba(245,158,11,.3);border-radius:14px;padding:24px;text-align:center">
+        <div style="font-size:28px;margin-bottom:8px">💾</div>
+        <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--yellow2);margin-bottom:8px">LAYER 2 — IndexedDB</div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.7">localForage wraps IndexedDB<br>Survives page refresh<br>Works 100% offline<br><span style="color:var(--text3)">Browser-only, 50MB+</span></div>
+        <div style="margin-top:12px;padding:6px 10px;background:rgba(245,158,11,.1);border-radius:6px;font-family:var(--mono);font-size:10px;color:var(--yellow2)">~5ms latency</div>
+      </div>
+      <!-- Arrow -->
+      <div style="text-align:center;display:flex;flex-direction:column;align-items:center;gap:6px">
+        <div style="font-size:22px;color:var(--text3)">⟷</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--text3)">on Ctrl+S<br>or blur</div>
+      </div>
+      <!-- Layer 3 -->
+      <div style="background:rgba(34,197,94,.07);border:2px solid rgba(34,197,94,.3);border-radius:14px;padding:24px;text-align:center">
+        <div style="font-size:28px;margin-bottom:8px">☁️</div>
+        <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--green2);margin-bottom:8px">LAYER 3 — MongoDB</div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.7">Workspace collection<br>Cross-device sync<br>Source of truth<br><span style="color:var(--text3)">Files embedded in doc</span></div>
+        <div style="margin-top:12px;padding:6px 10px;background:rgba(34,197,94,.1);border-radius:6px;font-family:var(--mono);font-size:10px;color:var(--green2)">~50ms latency</div>
+      </div>
+    </div>
+    <div class="callout info"><span class="ci">💡</span><span><strong>Rule:</strong> Every user action (type, create, delete) hits memfs instantly. IndexedDB captures it automatically for offline-safety. MongoDB only gets called when the user explicitly saves (Ctrl+S) or on window blur — never on every keystroke.</span></div>
+  </div>
+
+  <!-- Step-by-step flows -->
+  <div class="two-up">
+    <!-- CREATE FILE FLOW -->
+    <div class="sub-card">
+      <div class="sub-card-title" style="color:var(--yellow2)">📄 Create File or Folder</div>
+      <div class="steps-timeline">
+        <div class="stt">
+          <div class="stt-num" style="color:var(--yellow2)">1</div>
+          <div class="stt-line"><div class="stt-dot" style="border-color:var(--yellow)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
+          <div class="stt-content">
+            <div class="stt-title" style="color:var(--text)">User clicks "+ New File" in left panel</div>
+            <div class="stt-detail">react-arborist renders an inline input. User types filename with extension (.js, .java, .py etc.)</div>
+          </div>
+        </div>
+        <div class="stt">
+          <div class="stt-num" style="color:var(--blue2)">2</div>
+          <div class="stt-line"><div class="stt-dot" style="border-color:var(--blue)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
+          <div class="stt-content">
+            <div class="stt-title" style="color:var(--text)">memfs creates the file</div>
+            <div class="stt-detail">memfs.writeFileSync('/project/src/Main.java', ''). File tree re-renders immediately. Zero server call.</div>
+            <div class="stt-chips"><span class="stt-chip chip-b">memfs</span><span class="stt-chip chip-y">react-arborist</span></div>
+          </div>
+        </div>
+        <div class="stt">
+          <div class="stt-num" style="color:var(--yellow2)">3</div>
+          <div class="stt-line"><div class="stt-dot" style="border-color:var(--yellow)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
+          <div class="stt-content">
+            <div class="stt-title" style="color:var(--text)">File auto-opens in Monaco</div>
+            <div class="stt-detail">Monaco detects file extension → loads language mode (Java → java, .py → python etc). Empty file, cursor placed.</div>
+            <div class="stt-chips"><span class="stt-chip chip-b">Monaco Editor</span></div>
+          </div>
+        </div>
+        <div class="stt">
+          <div class="stt-num" style="color:var(--green2)">4</div>
+          <div class="stt-line"><div class="stt-dot" style="border-color:var(--green)"></div></div>
+          <div class="stt-content">
+            <div class="stt-title" style="color:var(--text)">Workspace state saved to IndexedDB</div>
+            <div class="stt-detail">Zustand updates workspace state. localForage.setItem syncs the whole file tree within 3 seconds.</div>
+            <div class="stt-chips"><span class="stt-chip chip-y">localForage</span><span class="stt-chip chip-p">Zustand</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- OPEN FOLDER FLOW -->
+    <div class="sub-card">
+      <div class="sub-card-title" style="color:var(--cyan2)">📂 Open Existing Folder</div>
+      <div class="steps-timeline">
+        <div class="stt">
+          <div class="stt-num" style="color:var(--cyan2)">1</div>
+          <div class="stt-line"><div class="stt-dot" style="border-color:var(--cyan)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
+          <div class="stt-content">
+            <div class="stt-title" style="color:var(--text)">User clicks "Open Folder" or picks workspace</div>
+            <div class="stt-detail">Uses File System Access API (browser native) to pick a local folder. Or opens a saved workspace from MongoDB.</div>
+          </div>
+        </div>
+        <div class="stt">
+          <div class="stt-num" style="color:var(--yellow2)">2</div>
+          <div class="stt-line"><div class="stt-dot" style="border-color:var(--yellow)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
+          <div class="stt-content">
+            <div class="stt-title" style="color:var(--text)">Files loaded into memfs</div>
+            <div class="stt-detail">File contents read and written to memfs paths. React-arborist tree rendered from memfs directory listing.</div>
+            <div class="stt-chips"><span class="stt-chip chip-b">memfs</span><span class="stt-chip chip-y">FS Access API</span></div>
+          </div>
+        </div>
+        <div class="stt">
+          <div class="stt-num" style="color:var(--blue2)">3</div>
+          <div class="stt-line"><div class="stt-dot" style="border-color:var(--blue)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
+          <div class="stt-content">
+            <div class="stt-title" style="color:var(--text)">Check IndexedDB cache first</div>
+            <div class="stt-detail">On page reload, IndexedDB is checked first. If workspace exists and timestamp is newer than MongoDB — load from IndexedDB. Offline-first strategy.</div>
+            <div class="stt-chips"><span class="stt-chip chip-y">localForage</span><span class="stt-chip chip-g">timestamp compare</span></div>
+          </div>
+        </div>
+        <div class="stt">
+          <div class="stt-num" style="color:var(--green2)">4</div>
+          <div class="stt-line"><div class="stt-dot" style="border-color:var(--green)"></div></div>
+          <div class="stt-content">
+            <div class="stt-title" style="color:var(--text)">File tree renders in left panel</div>
+            <div class="stt-detail">react-arborist shows full folder structure. Click any file → opens in Monaco with correct language mode.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PERSIST FLOW -->
+  <div class="flow-canvas">
+    <div style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-bottom:20px;letter-spacing:2px;text-transform:uppercase">Persistence Flow — What happens on Ctrl+S</div>
+    <div style="display:flex;align-items:center;gap:0;flex-wrap:wrap;justify-content:center">
+      <div class="fnode big yellow">User presses Ctrl+S</div>
+      <div class="arr">→<div class="alabel">triggers</div></div>
+      <div class="fnode big blue">Monaco save event</div>
+      <div class="arr">→<div class="alabel">writes to</div></div>
+      <div class="fnode big yellow">memfs updated</div>
+      <div class="arr">→<div class="alabel">dumps to</div></div>
+      <div class="fnode big orange">localForage.setItem</div>
+      <div class="arr">→<div class="alabel">then POST</div></div>
+      <div class="fnode big green">PATCH /api/workspaces/:id</div>
+      <div class="arr">→<div class="alabel">stores in</div></div>
+      <div class="fnode big green">MongoDB Atlas</div>
+    </div>
+    <div class="callout warn" style="margin-top:20px"><span class="ci">⚠️</span><span><strong>Delete file flow:</strong> memfs.unlinkSync → re-render tree → localForage sync → PATCH MongoDB workspace with updated files array. Delete is permanent after MongoDB sync. Before that, user can undo with Ctrl+Z (undoes memfs change only).</span></div>
+  </div>
+
+</div>
+</div>
+
+<!-- ════════════════════ PANEL 2: EDITOR ════════════════════ -->
+<div class="panel" id="p2">
+<div class="flow-page">
+
+  <div>
+    <div class="flow-section-title" style="color:var(--blue2)">
+      <span style="font-size:24px">✏️</span> MODULE 2 — Monaco Editor
+      <span class="badge" style="background:rgba(59,130,246,.15);color:var(--blue2)">CENTER PANEL</span>
+    </div>
+    <p style="color:var(--text2);font-size:14px;max-width:700px">Monaco is the same engine that powers VS Code. It gives you syntax highlighting, error squiggles, IntelliSense, diff viewer — all for free. Here's how every piece connects to your file system.</p>
+  </div>
+
+  <!-- Monaco architecture -->
+  <div class="flow-canvas">
+    <div style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-bottom:24px;letter-spacing:2px;text-transform:uppercase">Monaco Internal Architecture</div>
+    <div class="three-up">
+      <div style="background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.2);border-radius:10px;padding:16px">
+        <div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--blue2);margin-bottom:10px">📝 EDITOR MODEL</div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.8">
+          • Each open file = one Monaco Model<br>
+          • Model backed by memfs content<br>
+          • Tracks dirty state (unsaved changes)<br>
+          • Full undo/redo history per file<br>
+          • Cursor pos saved per tab
+        </div>
+      </div>
+      <div style="background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.2);border-radius:10px;padding:16px">
+        <div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--green2);margin-bottom:10px">🎨 LANGUAGE SERVICES</div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.8">
+          • Built-in: JS, TS, HTML, CSS, JSON<br>
+          • ESLint Web Worker → JS errors<br>
+          • Pyright WASM → Python type errors<br>
+          • Auto-detects language from extension<br>
+          • Squiggles = inline error markers
+        </div>
+      </div>
+      <div style="background:rgba(168,85,247,.06);border:1px solid rgba(168,85,247,.2);border-radius:10px;padding:16px">
+        <div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--purple2);margin-bottom:10px">🔍 AI INLINE FEATURES</div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.8">
+          • Ghost text (inline suggestions)<br>
+          • Diff editor (accept/reject AI patches)<br>
+          • Decorations API for AI highlights<br>
+          • Action menu (right-click AI commands)<br>
+          • Read selection → send to AI panel
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="two-up">
+    <!-- File open flow -->
+    <div class="sub-card">
+      <div class="sub-card-title" style="color:var(--blue2)">📂 Opening a File in Monaco</div>
+      <div class="steps-timeline">
+        <div class="stt">
+          <div class="stt-num" style="color:var(--blue2)">1</div>
+          <div class="stt-line"><div class="stt-dot" style="border-color:var(--blue)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
+          <div class="stt-content">
+            <div class="stt-title" style="color:var(--text)">User clicks file in left panel</div>
+            <div class="stt-detail">react-arborist fires onSelect. File path sent to editor state in Zustand.</div>
+          </div>
+        </div>
+        <div class="stt">
+          <div class="stt-num" style="color:var(--yellow2)">2</div>
+          <div class="stt-line"><div class="stt-dot" style="border-color:var(--yellow)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
+          <div class="stt-content">
+            <div class="stt-title" style="color:var(--text)">Content read from memfs</div>
+            <div class="stt-detail">memfs.readFileSync(path, 'utf8'). Returns file content string. If file doesn't exist in memfs → read from IndexedDB first.</div>
+            <div class="stt-chips"><span class="stt-chip chip-b">memfs.readFileSync</span></div>
+          </div>
+        </div>
+        <div class="stt">
+          <div class="stt-num" style="color:var(--blue2)">3</div>
+          <div class="stt-line"><div class="stt-dot" style="border-color:var(--blue)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
+          <div class="stt-content">
+            <div class="stt-title" style="color:var(--text)">Monaco Model created or reused</div>
+            <div class="stt-detail">monaco.editor.createModel(content, language, uri). Uri = file path. If model already exists for this file (open tab), reuse it — preserves cursor + undo history.</div>
+            <div class="stt-chips"><span class="stt-chip chip-b">createModel()</span></div>
+          </div>
+        </div>
+        <div class="stt">
+          <div class="stt-num" style="color:var(--green2)">4</div>
+          <div class="stt-line"><div class="stt-dot" style="border-color:var(--green)"></div></div>
+          <div class="stt-content">
+            <div class="stt-title" style="color:var(--text)">Language mode activates</div>
+            <div class="stt-detail">Monaco detects .java → Java syntax. ESLint worker activates for .js/.ts. Pyright activates for .py. Syntax colors appear instantly.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edit + autosave flow -->
+    <div class="sub-card">
+      <div class="sub-card-title" style="color:var(--green2)">⌨️ Editing + Error Detection</div>
+      <div class="steps-timeline">
+        <div class="stt">
+          <div class="stt-num" style="color:var(--blue2)">1</div>
+          <div class="stt-line"><div class="stt-dot" style="border-color:var(--blue)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
+          <div class="stt-content">
+            <div class="stt-title" style="color:var(--text)">User types code</div>
+            <div class="stt-detail">Monaco fires onChange event. Content written to memfs every keystroke. Tab gets "dirty dot" indicator.</div>
+          </div>
+        </div>
+        <div class="stt">
+          <div class="stt-num" style="color:var(--red)">2</div>
+          <div class="stt-line"><div class="stt-dot" style="border-color:var(--red)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
+          <div class="stt-content">
+            <div class="stt-title" style="color:var(--text)">Language worker detects errors</div>
+            <div class="stt-detail">ESLint Web Worker runs in background thread. Sends error markers back via postMessage. Monaco.editor.setModelMarkers() draws red squiggles. Hover shows error message. Problems tab shows all errors.</div>
+            <div class="stt-chips"><span class="stt-chip chip-r">ESLint Worker</span><span class="stt-chip chip-b">setModelMarkers</span></div>
+          </div>
+        </div>
+        <div class="stt">
+          <div class="stt-num" style="color:var(--yellow2)">3</div>
+          <div class="stt-line"><div class="stt-dot" style="border-color:var(--yellow)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
+          <div class="stt-content">
+            <div class="stt-title" style="color:var(--text)">Autosave — memfs → IndexedDB</div>
+            <div class="stt-detail">Debounced 3-second timer writes memfs state to localForage. Completely silent. User never sees this. Works even offline.</div>
+          </div>
+        </div>
+        <div class="stt">
+          <div class="stt-num" style="color:var(--green2)">4</div>
+          <div class="stt-line"><div class="stt-dot" style="border-color:var(--green)"></div></div>
+          <div class="stt-content">
+            <div class="stt-title" style="color:var(--text)">Ctrl+S — IndexedDB → MongoDB</div>
+            <div class="stt-detail">Explicit save triggers PATCH /api/workspaces/:id. Dirty dot cleared. "Saved" toast shown. File contents in MongoDB updated.</div>
+            <div class="stt-chips"><span class="stt-chip chip-g">MongoDB sync</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout ok"><span class="ci">✅</span><span><strong>Language detection table:</strong> .js/.ts/.jsx/.tsx → JavaScript/TypeScript + ESLint | .py → Python + Pyright WASM | .java → Java (syntax only, no LSP in MVP) | .cpp/.c/.h → C/C++ | .html → HTML | .css → CSS | .json → JSON with schema validation | .md → Markdown with preview</span></div>
+
+</div>
+</div>
+
+<!-- ════════════════════ PANEL 3: CODE RUNNER ════════════════════ -->
+<div class="panel" id="p3">
+<div class="flow-page">
+
+  <div>
+    <div class="flow-section-title" style="color:var(--green2)">
+      <span style="font-size:24px">▶</span> MODULE 3 — Code Runner
+      <span class="badge" style="background:rgba(34,197,94,.15);color:var(--green2)">BOTTOM PANEL</span>
+    </div>
+    <p style="color:var(--text2);font-size:14px;max-width:700px">A single ▶ Run button. The system detects what language it is and routes to the right execution engine — browser WASM for JS and Python, Judge0 Docker for everything else. Output streams back via WebSocket.</p>
+  </div>
+
+  <!-- Decision tree -->
+  <div class="flow-canvas">
+    <div style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-bottom:24px;letter-spacing:2px;text-transform:uppercase">Execution Routing — Language Decision</div>
+
+    <div style="display:flex;flex-direction:column;align-items:center;gap:0">
+      <!-- Start -->
+      <div class="fnode big blue">User clicks ▶ Run</div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 0">
+        <div style="width:2px;height:16px;background:var(--border2)"></div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text3)">↓ detect language from file extension</div>
+        <div style="width:2px;height:16px;background:var(--border2)"></div>
+      </div>
+      <div class="fnode big cyan">Language Detector</div>
+      <!-- Three branches -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;width:100%;margin-top:20px;gap:12px;position:relative">
+        <div style="position:absolute;top:-20px;left:0;right:0;height:2px;background:var(--border2);z-index:0"></div>
+        <!-- Branch 1 -->
+        <div style="display:flex;flex-direction:column;align-items:center;gap:12px">
+          <div style="width:2px;height:24px;background:var(--yellow)"></div>
+          <div class="fnode yellow">JS / TS / Node</div>
+          <div style="width:2px;height:16px;background:var(--border2)"></div>
+          <div class="fnode big yellow">WebContainers<br><span style="font-size:10px;font-weight:400">In-browser Node.js</span></div>
+          <div style="width:2px;height:16px;background:var(--border2)"></div>
+          <div class="fnode small yellow">✓ Zero server cost<br>✓ Full npm support<br>✓ ~instant start</div>
+        </div>
+        <!-- Branch 2 -->
+        <div style="display:flex;flex-direction:column;align-items:center;gap:12px">
+          <div style="width:2px;height:24px;background:var(--blue)"></div>
+          <div class="fnode blue">.py Python</div>
+          <div style="width:2px;height:16px;background:var(--border2)"></div>
+          <div class="fnode big blue">Pyodide WASM<br><span style="font-size:10px;font-weight:400">In-browser Python 3</span></div>
+          <div style="width:2px;height:16px;background:var(--border2)"></div>
+          <div class="fnode small blue">✓ No server needed<br>✓ stdlib + numpy<br>✓ BSD license</div>
+        </div>
+        <!-- Branch 3 -->
+        <div style="display:flex;flex-direction:column;align-items:center;gap:12px">
+          <div style="width:2px;height:24px;background:var(--purple)"></div>
+          <div class="fnode purple">Java/C++/Go/C/others</div>
+          <div style="width:2px;height:16px;background:var(--border2)"></div>
+          <div class="fnode big purple">Judge0 CE<br><span style="font-size:10px;font-weight:400">Docker on Railway</span></div>
+          <div style="width:2px;height:16px;background:var(--border2)"></div>
+          <div class="fnode small purple">✓ 60+ languages<br>✓ Sandboxed Docker<br>✓ Self-hosted free</div>
+        </div>
+      </div>
+      <!-- Merge back -->
+      <div style="width:100%;height:2px;background:var(--border2);margin:20px 0"></div>
+      <div class="fnode big green">Output → WebSocket → Terminal Panel</div>
+    </div>
+  </div>
+
+  <!-- Judge0 detailed flow -->
+  <div class="sub-card">
+    <div class="sub-card-title" style="color:var(--purple2)">🐳 Judge0 Full Flow (Java/C++/Go/C)</div>
+    <div class="steps-timeline">
+      <div class="stt">
+        <div class="stt-num" style="color:var(--purple2)">1</div>
+        <div class="stt-line"><div class="stt-dot" style="border-color:var(--purple)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
+        <div class="stt-content">
+          <div class="stt-title" style="color:var(--text)">Client reads file from memfs + sends to backend</div>
+          <div class="stt-detail">POST /api/execute { code, language_id, stdin, time_limit: 10s, memory_limit: 256MB }. JWT header attached.</div>
+          <div class="stt-chips"><span class="stt-chip chip-p">POST /api/execute</span><span class="stt-chip chip-b">JWT auth</span></div>
+        </div>
+      </div>
+      <div class="stt">
+        <div class="stt-num" style="color:var(--purple2)">2</div>
+        <div class="stt-line"><div class="stt-dot" style="border-color:var(--purple)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
+        <div class="stt-content">
+          <div class="stt-title" style="color:var(--text)">Backend submits to Judge0 CE</div>
+          <div class="stt-detail">Judge0 adapter calls POST /submissions?wait=false on Judge0 (Railway Docker). Returns { token: "abc123" }. Backend stores token keyed to userId + Socket room.</div>
+          <div class="stt-chips"><span class="stt-chip chip-p">Judge0 REST API</span></div>
+        </div>
+      </div>
+      <div class="stt">
+        <div class="stt-num" style="color:var(--purple2)">3</div>
+        <div class="stt-line"><div class="stt-dot" style="border-color:var(--purple)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
+        <div class="stt-content">
+          <div class="stt-title" style="color:var(--text)">Judge0 compiles + runs in isolated Docker</div>
+          <div class="stt-detail">ephemeral Docker container. seccomp sandbox. No network access. Resource limits enforced by cgroups. Auto-destroyed after job.</div>
+          <div class="stt-chips"><span class="stt-chip chip-r">Docker isolated</span><span class="stt-chip chip-r">seccomp sandbox</span></div>
+        </div>
+      </div>
+      <div class="stt">
+        <div class="stt-num" style="color:var(--purple2)">4</div>
+        <div class="stt-line"><div class="stt-dot" style="border-color:var(--purple)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
+        <div class="stt-content">
+          <div class="stt-title" style="color:var(--text)">Backend polls Judge0 every 500ms</div>
+          <div class="stt-detail">GET /submissions/{token}. Status: Processing → Accepted / Error / Time Limit / Memory Limit. When done, emits result via Socket.io.</div>
+        </div>
+      </div>
+      <div class="stt">
+        <div class="stt-num" style="color:var(--green2)">5</div>
+        <div class="stt-line"><div class="stt-dot" style="border-color:var(--green)"></div></div>
+        <div class="stt-content">
+          <div class="stt-title" style="color:var(--text)">Result streams to terminal via WebSocket</div>
+          <div class="stt-detail">io.to(userId).emit('execution:result', { stdout, stderr, exitCode, time, memory }). Terminal panel renders: stdout green, stderr red, exit code shown.</div>
+          <div class="stt-chips"><span class="stt-chip chip-g">Socket.io emit</span><span class="stt-chip chip-g">Terminal render</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout warn"><span class="ci">⚠️</span><span><strong>Error display in editor:</strong> When execution produces a runtime error with line numbers (e.g., Java NullPointerException at line 14), the backend parses the stderr, extracts line/column info, and sends back an array of markers. Client calls monaco.editor.setModelMarkers() to draw error squiggles on exact lines — same as VS Code.</span></div>
+
+</div>
+</div>
+
+<!-- ════════════════════ PANEL 4: AI PANEL ════════════════════ -->
+<div class="panel" id="p4">
+<div class="flow-page">
+
+  <div>
+    <div class="flow-section-title" style="color:var(--purple2)">
+      <span style="font-size:24px">🤖</span> MODULE 4 — AI Panel
+      <span class="badge" style="background:rgba(168,85,247,.15);color:var(--purple2)">RIGHT PANEL</span>
+    </div>
+    <p style="color:var(--text2);font-size:14px;max-width:700px">Like Cursor AI — the assistant sees your whole workspace, understands your code, and can write patches directly into your files. User sees the diff and accepts or rejects. All using Groq (free, fast).</p>
+  </div>
+
+  <!-- Context assembly -->
+  <div class="flow-canvas">
+    <div style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-bottom:20px;letter-spacing:2px;text-transform:uppercase">Context Assembly — What the AI Sees</div>
+    <div class="three-up" style="margin-bottom:20px">
+      <div style="background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.2);border-radius:10px;padding:16px">
+        <div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--blue2);margin-bottom:8px">① ACTIVE FILE</div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.7">100% of the currently open file content. Always included first. Most important context for the current task.</div>
+      </div>
+      <div style="background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:16px">
+        <div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--yellow2);margin-bottom:8px">② OTHER OPEN TABS</div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.7">First 200 lines of each open tab. Trimmed to keep total context under 6,000 tokens. Gives cross-file awareness.</div>
+      </div>
+      <div style="background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.2);border-radius:10px;padding:16px">
+        <div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--green2);margin-bottom:8px">③ FILE TREE + METADATA</div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.7">Full directory structure as a string. File names, folder names, language hints. AI knows the project layout.</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center">
+      <div class="fnode blue">Active File (full)</div>
+      <div class="arr">+</div>
+      <div class="fnode yellow">Open Tabs (200 lines each)</div>
+      <div class="arr">+</div>
+      <div class="fnode green">File Tree structure</div>
+      <div class="arr">+</div>
+      <div class="fnode purple">User message</div>
+      <div class="arr">+</div>
+      <div class="fnode cyan">6-turn history</div>
+      <div class="arr">→</div>
+      <div class="fnode big purple">Groq API (Llama 3.3 70B)</div>
+    </div>
+  </div>
+
+  <!-- Full flow -->
+  <div class="sub-card">
+    <div class="sub-card-title" style="color:var(--purple2)">⬡ Complete AI Request → Patch Flow</div>
+    <div class="steps-timeline">
+      <div class="stt">
+        <div class="stt-num" style="color:var(--blue2)">1</div>
+        <div class="stt-line"><div class="stt-dot" style="border-color:var(--blue)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
+        <div class="stt-content">
+          <div class="stt-title" style="color:var(--text)">User types in AI panel and hits Enter</div>
+          <div class="stt-detail">Examples: "Explain this function", "Fix the bug on line 12", "Write unit tests", "Refactor to async/await". Optional: user highlights code first → selection auto-included in context.</div>
+        </div>
+      </div>
+      <div class="stt">
+        <div class="stt-num" style="color:var(--yellow2)">2</div>
+        <div class="stt-line"><div class="stt-dot" style="border-color:var(--yellow)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
+        <div class="stt-content">
+          <div class="stt-title" style="color:var(--text)">Client builds context object</div>
+          <div class="stt-detail">Reads active file from memfs. Reads open tabs from memfs. Gets file tree listing. Estimates total tokens. Trims if over 6,000 tokens (shortest files cut first).</div>
+          <div class="stt-code">const ctx = {<br>&nbsp;&nbsp;activeFile: memfs.readFileSync(activePath, 'utf8'),<br>&nbsp;&nbsp;openFiles: openTabs.map(p => trim200(memfs.readFileSync(p))),<br>&nbsp;&nbsp;tree: memfs.listAll(), selection: editor.getSelection()<br>}</div>
+        </div>
+      </div>
+      <div class="stt">
+        <div class="stt-num" style="color:var(--purple2)">3</div>
+        <div class="stt-line"><div class="stt-dot" style="border-color:var(--purple)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
+        <div class="stt-content">
+          <div class="stt-title" style="color:var(--text)">POST /api/agent/chat → backend</div>
+          <div class="stt-detail">{ message, context, history (last 6 turns), workspaceId }. JWT authenticated. Socket.io room used for streaming response back.</div>
+        </div>
+      </div>
+      <div class="stt">
+        <div class="stt-num" style="color:var(--purple2)">4</div>
+        <div class="stt-line"><div class="stt-dot" style="border-color:var(--purple)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
+        <div class="stt-content">
+          <div class="stt-title" style="color:var(--text)">Backend builds Groq prompt</div>
+          <div class="stt-detail">System prompt forces JSON response: { type: "explanation" | "patch" | "tests", explanation: "...", patch?: { filePath, newContent } }. Groq Llama 3.3 70B called with stream: true.</div>
+          <div class="stt-chips"><span class="stt-chip chip-p">Groq API</span><span class="stt-chip chip-p">stream:true</span><span class="stt-chip chip-p">Llama 3.3 70B</span></div>
+        </div>
+      </div>
+      <div class="stt">
+        <div class="stt-num" style="color:var(--cyan2)">5</div>
+        <div class="stt-line"><div class="stt-dot" style="border-color:var(--cyan)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
+        <div class="stt-content">
+          <div class="stt-title" style="color:var(--text)">Tokens streamed back to client via Socket.io</div>
+          <div class="stt-detail">Each token from Groq → io.to(userId).emit('agent:token', token). AI panel shows text appearing in real-time. User sees response building live. When stream ends, emit 'agent:done' with full parsed JSON.</div>
+          <div class="stt-chips"><span class="stt-chip chip-c">agent:token event</span><span class="stt-chip chip-c">agent:done event</span></div>
+        </div>
+      </div>
+      <div class="stt">
+        <div class="stt-num" style="color:var(--yellow2)">6</div>
+        <div class="stt-line"><div class="stt-dot" style="border-color:var(--yellow)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
+        <div class="stt-content">
+          <div class="stt-title" style="color:var(--text)">If type === "patch" → open Monaco Diff Editor</div>
+          <div class="stt-detail">monaco.editor.createDiffEditor() opens. Left side = original (from memfs). Right side = AI suggested code. User sees exact changes highlighted. Two buttons appear: ✅ Accept / ❌ Reject.</div>
+          <div class="stt-chips"><span class="stt-chip chip-b">Monaco DiffEditor</span></div>
+        </div>
+      </div>
+      <div class="stt">
+        <div class="stt-num" style="color:var(--green2)">7</div>
+        <div class="stt-line"><div class="stt-dot" style="border-color:var(--green)"></div></div>
+        <div class="stt-content">
+          <div class="stt-title" style="color:var(--text)">Accept → write to memfs → autosave triggers</div>
+          <div class="stt-detail">memfs.writeFileSync(patch.filePath, patch.newContent). Monaco model updates live. Dirty dot appears. Undo (Ctrl+Z) fully supported — Monaco tracks this in history. 3-second autosave to IndexedDB kicks in.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Token management -->
+  <div class="flow-canvas">
+    <div style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-bottom:20px;letter-spacing:2px;text-transform:uppercase">Token Management — Staying Within Free Limits</div>
+    <div class="three-up">
+      <div style="background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.2);border-radius:10px;padding:16px">
+        <div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--blue2);margin-bottom:8px">GROQ FREE LIMITS</div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.7">14,400 requests/day<br>6,000 tokens/request<br>Resets every 24h<br>No credit card required</div>
+      </div>
+      <div style="background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.2);border-radius:10px;padding:16px">
+        <div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--green2);margin-bottom:8px">CONTEXT BUDGET</div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.7">System prompt: ~300 tokens<br>File context: ~4,000 tokens<br>History: ~1,000 tokens<br>User msg: ~200 tokens<br><strong style="color:var(--green2)">Total: ~5,500/6,000</strong></div>
+      </div>
+      <div style="background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:16px">
+        <div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--yellow2);margin-bottom:8px">FALLBACK CHAIN</div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.7">Primary: Groq (speed)<br>If 429 → Gemini Flash<br>If both fail → queue + retry<br>User sees spinner, not error</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout info"><span class="ci">🔮</span><span><strong>Phase 2 — ChromaDB RAG:</strong> When workspace grows large, embed all files into ChromaDB. On each query, embed the user message, retrieve top-5 matching chunks, inject only those into the prompt. Keeps quality high even with 10,000+ line codebases. Skip for MVP — add in Week 4.</span></div>
+
+</div>
+</div>
+
+<!-- ════════════════════ PANEL 5: LEARNING MODE ════════════════════ -->
+<div class="panel" id="p5">
+<div class="flow-page">
+
+  <div>
+    <div class="flow-section-title" style="color:var(--orange)">
+      <span style="font-size:24px">📚</span> MODULE 5 — Learning Mode
+      <span class="badge" style="background:rgba(249,115,22,.15);color:var(--orange)">OVERLAY / SIDE PANEL</span>
+    </div>
+    <p style="color:var(--text2);font-size:14px;max-width:700px">User is working on a project. Clicks "Learn." Types what they want to learn and why. AI asks a few questions, builds a personalized roadmap with exercises, and at the end can write code directly into the user's project.</p>
+  </div>
+
+  <!-- Learning UX overview -->
+  <div class="flow-canvas">
+    <div style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-bottom:20px;letter-spacing:2px;text-transform:uppercase">Learning Mode UX States</div>
+    <div style="display:flex;align-items:center;gap:0;flex-wrap:wrap;justify-content:center">
+      <div class="fnode big orange">User clicks 📚 Learn</div>
+      <div class="arr">→</div>
+      <div class="fnode orange">User writes intent + context</div>
+      <div class="arr">→</div>
+      <div class="fnode orange">AI asks clarifying questions</div>
+      <div class="arr">→</div>
+      <div class="fnode orange">Roadmap generated</div>
+      <div class="arr">→</div>
+      <div class="fnode orange">Step-by-step exercises</div>
+      <div class="arr">→</div>
+      <div class="fnode big orange">Code written into project</div>
+    </div>
+  </div>
+
+  <!-- Full step flow -->
+  <div class="sub-card">
+    <div class="sub-card-title" style="color:var(--orange)">📚 Complete Learning Flow — Step by Step</div>
+    <div class="steps-timeline">
+      <div class="stt">
+        <div class="stt-num" style="color:var(--orange)">1</div>
+        <div class="stt-line"><div class="stt-dot" style="border-color:var(--orange)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
+        <div class="stt-content">
+          <div class="stt-title" style="color:var(--text)">User opens Learning Mode from workspace</div>
+          <div class="stt-detail">Slides open as a right-side panel or modal overlay (doesn't close the editor). User can see their code in the background. They type: "I want to learn WebSockets because I'm using them in this project in 2 days."</div>
+        </div>
+      </div>
+      <div class="stt">
+        <div class="stt-num" style="color:var(--orange)">2</div>
+        <div class="stt-line"><div class="stt-dot" style="border-color:var(--orange)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
+        <div class="stt-content">
+          <div class="stt-title" style="color:var(--text)">Context sent to backend → Groq asks questions</div>
+          <div class="stt-detail">User message + current workspace file tree + active file → POST /api/learn/start. Groq generates 3–4 clarifying questions: "What language? How much time do you have? Do you want to learn theory or jump to code first? What will you build with this?"</div>
+          <div class="stt-chips"><span class="stt-chip chip-o">Groq API</span><span class="stt-chip chip-o">workspace context injected</span></div>
+        </div>
+      </div>
+      <div class="stt">
+        <div class="stt-num" style="color:var(--orange)">3</div>
+        <div class="stt-line"><div class="stt-dot" style="border-color:var(--orange)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
+        <div class="stt-content">
+          <div class="stt-title" style="color:var(--text)">User answers questions (can modify/skip)</div>
+          <div class="stt-detail">Answers are card-by-card, not a boring form. User can type free text or pick options. Answers: "JavaScript, 3 hours, code-first, building a real-time chat app."</div>
+        </div>
+      </div>
+      <div class="stt">
+        <div class="stt-num" style="color:var(--orange)">4</div>
+        <div class="stt-line"><div class="stt-dot" style="border-color:var(--orange)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
+        <div class="stt-content">
+          <div class="stt-title" style="color:var(--text)">POST /api/learn/roadmap → Groq generates roadmap JSON</div>
+          <div class="stt-detail">System prompt forces structured JSON. Returns a roadmap with 3–6 steps. Each step has: title, description, type (read/code/exercise), content, estimatedMinutes, starterCode, testCases. Validated with Zod. Saved to MongoDB roadmaps collection.</div>
+          <div class="stt-code">// Roadmap JSON structure<br>{ title: "WebSockets in 3 hours",<br>&nbsp;&nbsp;steps: [<br>&nbsp;&nbsp;&nbsp;&nbsp;{ id, title: "What is a WebSocket?", type: "read", content: "..." },<br>&nbsp;&nbsp;&nbsp;&nbsp;{ id, title: "Your first server", type: "code", starterCode: "...", testCases: [...] },<br>&nbsp;&nbsp;&nbsp;&nbsp;{ id, title: "Add to your project", type: "apply", targetFile: "server.js" }<br>&nbsp;&nbsp;] }</div>
+          <div class="stt-chips"><span class="stt-chip chip-o">Groq + Zod validate</span><span class="stt-chip chip-o">MongoDB saved</span></div>
+        </div>
+      </div>
+      <div class="stt">
+        <div class="stt-num" style="color:var(--orange)">5</div>
+        <div class="stt-line"><div class="stt-dot" style="border-color:var(--orange)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
+        <div class="stt-content">
+          <div class="stt-title" style="color:var(--text)">Roadmap renders as a visual stepper</div>
+          <div class="stt-detail">Steps shown as cards in the learning panel. Lock icon on future steps. Progress bar at top. User clicks "Start Step 1."</div>
+        </div>
+      </div>
+      <div class="stt">
+        <div class="stt-num" style="color:var(--orange)">6</div>
+        <div class="stt-line"><div class="stt-dot" style="border-color:var(--orange)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
+        <div class="stt-content">
+          <div class="stt-title" style="color:var(--text)">Exercise steps open in split view in Monaco</div>
+          <div class="stt-detail">Instructions on left, Monaco editor with starterCode on right. User writes code. Clicks ▶ Run. Test cases run via execution engine (same Judge0/Pyodide pipeline from Module 3). Pass/fail shown per test case. User can ask AI for help without leaving this screen.</div>
+          <div class="stt-chips"><span class="stt-chip chip-o">Monaco editor</span><span class="stt-chip chip-g">Judge0 / Pyodide</span><span class="stt-chip chip-p">AI help inline</span></div>
+        </div>
+      </div>
+      <div class="stt">
+        <div class="stt-num" style="color:var(--orange)">7</div>
+        <div class="stt-line"><div class="stt-dot" style="border-color:var(--orange)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
+        <div class="stt-content">
+          <div class="stt-title" style="color:var(--text)">User ticks ✓ complete → progress saved to MongoDB</div>
+          <div class="stt-detail">PATCH /api/learn/progress { exerciseId, status: 'completed', code: userSolution }. Next step unlocks. Dashboard shows % complete. User can resume later from exact same step.</div>
+          <div class="stt-chips"><span class="stt-chip chip-o">MongoDB progress</span></div>
+        </div>
+      </div>
+      <div class="stt">
+        <div class="stt-num" style="color:var(--green2)">8</div>
+        <div class="stt-line"><div class="stt-dot" style="border-color:var(--green)"></div></div>
+        <div class="stt-content">
+          <div class="stt-title" style="color:var(--text)">"Apply to Project" step — AI writes code into your files</div>
+          <div class="stt-detail">Final step type is "apply." AI generates implementation code based on what user just learned + their project's existing files. Opens Monaco DiffEditor showing what will be added to e.g. server.js. User reviews and clicks Accept — same as Module 4 patch flow. AI can also add a comment in the file explaining what it added.</div>
+          <div class="stt-chips"><span class="stt-chip chip-g">Monaco DiffEditor</span><span class="stt-chip chip-p">Groq patch</span><span class="stt-chip chip-o">Permission gates</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Permissions -->
+  <div class="flow-canvas">
+    <div style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-bottom:20px;letter-spacing:2px;text-transform:uppercase">AI Permissions in Learning Mode</div>
+    <div class="three-up">
+      <div style="background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.2);border-radius:10px;padding:16px">
+        <div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--green2);margin-bottom:8px">✅ ALWAYS ALLOWED</div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.8">Read all files in workspace<br>Suggest code in learning panel<br>Show diffs for review</div>
+      </div>
+      <div style="background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:16px">
+        <div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--yellow2);margin-bottom:8px">🟡 NEEDS ACCEPT</div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.8">Write/edit any project file<br>Create new files<br>Add comments to code<br>Apply learning to project</div>
+      </div>
+      <div style="background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.2);border-radius:10px;padding:16px">
+        <div style="font-family:var(--mono);font-size:11px;font-weight:700;color:#f87171;margin-bottom:8px">🔴 NEVER ALLOWED</div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.8">Delete files<br>Run arbitrary commands<br>Access outside workspace<br>Auto-push to Git</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- ════════════════════ FOOTER / FULL SYSTEM MAP ════════════════════ -->
+<div style="background:var(--bg2);border-top:1px solid var(--border);padding:40px 48px">
+  <div style="font-family:var(--mono);font-size:11px;color:var(--text3);letter-spacing:2px;text-transform:uppercase;margin-bottom:24px">Complete Data Flow — All Modules Together</div>
+
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:32px;overflow-x:auto">
+    <div style="display:flex;flex-direction:column;gap:12px;min-width:800px">
+
+      <!-- Browser row -->
+      <div style="background:rgba(59,130,246,.05);border:1px solid rgba(59,130,246,.2);border-radius:10px;padding:16px">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--blue2);letter-spacing:2px;text-transform:uppercase;margin-bottom:12px">🖥 BROWSER</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+          <div class="fnode small yellow">📁 File Tree<br>(react-arborist)</div>
+          <div class="arr" style="font-size:16px;padding:0 4px">⟷</div>
+          <div class="fnode small yellow">memfs</div>
+          <div class="arr" style="font-size:16px;padding:0 4px">⟷</div>
+          <div class="fnode small blue">Monaco Editor</div>
+          <div class="arr" style="font-size:16px;padding:0 4px">⟷</div>
+          <div class="fnode small yellow">localForage<br>IndexedDB</div>
+          <div style="flex:1"></div>
+          <div class="fnode small yellow">Pyodide<br>(Python WASM)</div>
+          <div class="arr" style="font-size:16px;padding:0 4px">+</div>
+          <div class="fnode small yellow">WebContainers<br>(JS Node)</div>
+          <div style="flex:1"></div>
+          <div class="fnode small purple">AI Panel<br>(context builder)</div>
+          <div style="flex:1"></div>
+          <div class="fnode small orange">Learning Panel<br>(roadmap UI)</div>
+        </div>
+      </div>
+
+      <!-- Arrow down -->
+      <div style="text-align:center;color:var(--text3);font-size:20px;padding:4px 0">↕ WebSocket (Socket.io) + REST (JWT secured)</div>
+
+      <!-- Backend row -->
+      <div style="background:rgba(168,85,247,.05);border:1px solid rgba(168,85,247,.2);border-radius:10px;padding:16px">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--purple2);letter-spacing:2px;text-transform:uppercase;margin-bottom:12px">⚙️ NODE.JS BACKEND (Railway)</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+          <div class="fnode small cyan">JWT Middleware</div>
+          <div class="arr" style="font-size:16px;padding:0 4px">→</div>
+          <div class="fnode small purple">Workspace Service</div>
+          <div class="arr" style="font-size:16px;padding:0 4px">·</div>
+          <div class="fnode small purple">Execution Service</div>
+          <div class="arr" style="font-size:16px;padding:0 4px">·</div>
+          <div class="fnode small purple">Agent Service</div>
+          <div class="arr" style="font-size:16px;padding:0 4px">·</div>
+          <div class="fnode small purple">Learning Service</div>
+          <div class="arr" style="font-size:16px;padding:0 4px">·</div>
+          <div class="fnode small cyan">Socket.io Server</div>
+        </div>
+      </div>
+
+      <!-- Arrow down -->
+      <div style="text-align:center;color:var(--text3);font-size:20px;padding:4px 0">↕ REST + gRPC adapters</div>
+
+      <!-- External row -->
+      <div style="background:rgba(34,197,94,.05);border:1px solid rgba(34,197,94,.2);border-radius:10px;padding:16px">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--green2);letter-spacing:2px;text-transform:uppercase;margin-bottom:12px">🗄 DATA + EXTERNAL SERVICES</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+          <div class="fnode small green">MongoDB Atlas<br>(workspaces, users, progress)</div>
+          <div class="arr" style="font-size:16px;padding:0 4px">·</div>
+          <div class="fnode small green">ChromaDB<br>(vector embeddings)</div>
+          <div class="arr" style="font-size:16px;padding:0 4px">·</div>
+          <div class="fnode small yellow">Groq API<br>(primary LLM)</div>
+          <div class="arr" style="font-size:16px;padding:0 4px">·</div>
+          <div class="fnode small yellow">Gemini Flash<br>(LLM fallback)</div>
+          <div class="arr" style="font-size:16px;padding:0 4px">·</div>
+          <div class="fnode small purple">Judge0 CE<br>(Docker execution)</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div style="margin-top:20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+    <div style="font-family:var(--mono);font-size:11px;color:var(--text3)">Total infrastructure cost: $0 · All tools verified free · MongoDB + Railway + Vercel + Groq + Judge0</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <span style="padding:4px 10px;border-radius:20px;font-family:var(--mono);font-size:10px;font-weight:700;background:rgba(34,197,94,.12);color:var(--green2);border:1px solid rgba(34,197,94,.3)">5 modules</span>
+      <span style="padding:4px 10px;border-radius:20px;font-family:var(--mono);font-size:10px;font-weight:700;background:rgba(59,130,246,.12);color:var(--blue2);border:1px solid rgba(59,130,246,.3)">8 routes</span>
+      <span style="padding:4px 10px;border-radius:20px;font-family:var(--mono);font-size:10px;font-weight:700;background:rgba(245,158,11,.12);color:var(--yellow2);border:1px solid rgba(245,158,11,.3)">3 storage layers</span>
+      <span style="padding:4px 10px;border-radius:20px;font-family:var(--mono);font-size:10px;font-weight:700;background:rgba(168,85,247,.12);color:var(--purple2);border:1px solid rgba(168,85,247,.3)">2 execution engines</span>
+    </div>
+  </div>
+</div>
+
+<script>
+function showPanel(n) {
+  document.querySelectorAll('.panel').forEach((p,i) => p.classList.toggle('active', i===n));
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', i===n));
+}
+</script>
+</body>
+</html>

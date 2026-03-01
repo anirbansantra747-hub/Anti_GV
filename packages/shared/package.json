@@ -1,0 +1,12 @@
+{
+  "name": "@antigv/shared",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Shared types, constants, and utilities used by all Anti_GV packages",
+  "main": "src/index.js",
+  "scripts": {
+    "build": "echo 'No build step for shared'",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix"
+  }
+}

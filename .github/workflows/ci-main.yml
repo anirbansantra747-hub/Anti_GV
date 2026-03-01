@@ -1,0 +1,51 @@
+name: '🚀 Production CI'
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality:
+    name: 'Full Quality Gate'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint (strict)
+        run: pnpm lint
+
+      - name: Build all packages + apps
+        run: pnpm build
+
+      # Uncomment as you add tests:
+      # - name: Unit tests
+      #   run: pnpm test
+      #
+      # - name: Integration tests
+      #   run: pnpm test:integration
+
+  # Uncomment when ready for auto-deploy:
+  # deploy:
+  #   needs: quality
+  #   if: github.event.pull_request.merged == true
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Deploy frontend to Vercel
+  #       run: echo "TODO: vercel deploy"
+  #     - name: Deploy backend to Railway
+  #       run: echo "TODO: railway deploy"
