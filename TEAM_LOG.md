@@ -6,36 +6,7 @@
 
 ## 🚨 Ground Rules
 
-### Who Owns What (Don't Touch Someone Else's Code Without Asking)
-
-| Area                  | Owner            | Files (CAN touch)                             | Files (DON'T touch)                   |
-| --------------------- | ---------------- | --------------------------------------------- | ------------------------------------- |
-| **File System & UI**  | Teammate 1       | `apps/web/src/components/FileTree/`           | `apps/server/src/services/agent/`     |
-|                       |                  | `apps/web/src/components/Editor/`             | `apps/server/src/services/rag/`       |
-|                       |                  | `apps/web/src/components/Topbar/`             | `apps/server/src/services/llm/`       |
-|                       |                  | `apps/web/src/stores/editorStore.js`          | `apps/web/src/components/AIPanel/`    |
-|                       |                  | `apps/web/src/stores/fileSystemStore.js`      | `apps/web/src/components/Terminal/`   |
-|                       |                  | `apps/web/src/services/memfsService.js`       |                                       |
-|                       |                  | `apps/web/src/services/persistenceService.js` |                                       |
-| **Code Runner**       | Teammate 2       | `apps/web/src/components/Terminal/`           | `apps/server/src/services/agent/`     |
-|                       |                  | `apps/web/src/stores/terminalStore.js`        | `apps/server/src/services/rag/`       |
-|                       |                  | `apps/web/src/services/executionService.js`   | `apps/web/src/components/FileTree/`   |
-|                       |                  | `apps/server/src/services/execution/`         | `apps/web/src/components/Editor/`     |
-|                       |                  | `apps/server/src/routes/executionRoutes.js`   | `apps/web/src/components/AIPanel/`    |
-|                       |                  | `apps/server/src/sockets/executionSocket.js`  |                                       |
-| **AI Agent**          | Teammate 3 (You) | `apps/web/src/components/AIPanel/`            | `apps/web/src/components/FileTree/`   |
-|                       |                  | `apps/web/src/stores/agentStore.js`           | `apps/web/src/components/Editor/`     |
-|                       |                  | `apps/web/src/services/agentService.js`       | `apps/web/src/components/Terminal/`   |
-|                       |                  | `apps/server/src/services/agent/`             | `apps/server/src/services/execution/` |
-|                       |                  | `apps/server/src/services/rag/`               |                                       |
-|                       |                  | `apps/server/src/services/llm/`               |                                       |
-|                       |                  | `apps/server/src/routes/agentRoutes.js`       |                                       |
-|                       |                  | `apps/server/src/sockets/agentSocket.js`      |                                       |
-| **Shared (everyone)** | All              | `packages/shared/`                            | —                                     |
-|                       |                  | `packages/ai-core/`                           | —                                     |
-|                       |                  | `TEAM_LOG.md`                                 | Root configs (ask first)              |
-
-> **If you need to change a file you don't own → message the owner in the group. Don't just do it.**
+> **If you need to change a file you don't own → message in the group. Don't just do it.**
 
 ---
 
