@@ -8,7 +8,7 @@
 
 ## 🏗 Architecture Overview
 
-Anti_GV is built as a **5-module system** inside the browser:
+Anti_GV is built as a **5-module system** inside the browser
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
