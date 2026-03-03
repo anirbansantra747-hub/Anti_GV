@@ -77,3 +77,12 @@ New entries at **top**. Format:
 **Teammates:** `pnpm install` from root. Copy `apps/server/.env.example` → `.env`.
 
 ---
+
+### 2026-03-04 — [AI] LLM Clients & Router
+
+**Who:** Anirban | **Branch:** feature/ai-llm-clients
+**What:** Created placeholder files for Groq, Cerebras, and Gemini API clients, plus `llmRouter.js` and `streamHandler.js`. No actual API integration yet.
+**Breaking?** No.
+**Teammates:** None — placeholders only.
+
+---
