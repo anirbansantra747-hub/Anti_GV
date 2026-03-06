@@ -1,10 +1,20 @@
-import { llmRouter } from '../llm/llmRouter.js';
-import { editSchema, coderSystemPrompt } from './schemas/editSchema.js';
+import { generateResponse } from '../llm/llmRouter.js';
+import { editJsonSchemaInstructions } from './schemas/editSchema.js';
 
-const fixerSystemPrompt = `${coderSystemPrompt}
+const fixerSystemPrompt = `
+You are acting as an expert Software Engineer FIXER Agent.
+The previous code generation produced an error (e.g. failing to apply to the file, syntax error, or failing logic).
+Review the previous generation, the error feedback, and explicitly correct the mistake following all rules for the JSON edit format.
 
-You are acting as a FIXER. The previous code generation produced an error (e.g. failing to apply to the file, syntax error, or failing logic).
-Review the previous generation, the error feedback, and explicitly correct the mistake following all rules for the JSON edit format.`;
+RULES:
+1. Generate exact "search" and "replace" blocks for the specified file.
+2. The "search" text MUST exactly match the file content natively, including all whitespace.
+3. If the step action is CREATE, leave "search" as an empty string "" and provide the entire file content in "replace".
+4. Output ONLY valid JSON matching the schema below. No markdown wrappers.
+
+SCHEMA:
+${editJsonSchemaInstructions}
+`;
 
 /**
  * Retries generating code edits given critic feedback or patch application errors.
@@ -41,13 +51,14 @@ ${errorFeedback}
 Your task: Fix the error and return a NEW set of valid JSON edits. Remember: The \`search\` block must EXACTLY match the file's current text snippet.`;
 
   try {
-    const response = await llmRouter.generateJSON({
-      messages: [
+    const responseText = await generateResponse(
+      [
         { role: 'system', content: fixerSystemPrompt },
         { role: 'user', content: userContent },
       ],
-      zodSchema: editSchema,
-    });
+      { jsonMode: true }
+    );
+    const response = JSON.parse(responseText);
 
     return response.edits; // Corrected array of { search, replace }
   } catch (error) {
