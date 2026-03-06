@@ -69,8 +69,11 @@ export const useAgentStore = create((set, get) => {
             const { diffService } = await import('../services/diffService');
 
             // Format the edits into the FilePatch shape expected by DiffService
+            const rawPath = payload.file || 'unknown.js';
+            const absolutePath = rawPath.startsWith('/') ? rawPath : '/' + rawPath;
+
             const patch = {
-              path: payload.file || 'unknown.js',
+              path: absolutePath,
               operations: parsedChunk.edits.map((edit) => ({
                 type: edit.search ? 'replace' : 'insert',
                 content: edit.replace,
