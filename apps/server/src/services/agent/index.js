@@ -1,6 +1,6 @@
 import { classifyIntent } from './intentClassifier.js';
 import { assembleContext } from './contextAssembler.js';
-// import { generatePlan } from './plannerAgent.js'; // To be implemented in Module 5
+import { generatePlan } from './plannerAgent.js';
 // import { generateCodeEdits } from './coderAgent.js'; // To be implemented in Module 6
 
 /**
@@ -33,25 +33,13 @@ export const runAgentPipeline = async ({ prompt, frontendContext, serverContext,
     socket.emit('agent:thinking', { message: 'Assembling codebase context...' });
     const fullContext = assembleContext(frontendContext, serverContext);
 
-    // 3. Planning (Module 5 placeholder)
+    // 3. Planning (Module 5)
     socket.emit('agent:thinking', { message: 'Generating execution plan...' });
-    // const plan = await generatePlan(prompt, fullContext);
     socket.emit('agent:step:start', { stepId: 'plan', description: 'Proposed Plan' });
 
-    // Temporary stub for planning
-    const mockPlan = {
-      summary: 'Mocked plan for testing pipeline',
-      steps: [
-        {
-          stepId: 1,
-          action: 'MODIFY',
-          filePath: frontendContext.activeFile || '/mock/path.js',
-          description: 'Mock edit step',
-        },
-      ],
-    };
+    const plan = await generatePlan(prompt, fullContext);
 
-    socket.emit('agent:plan', mockPlan);
+    socket.emit('agent:plan', plan);
     socket.emit('agent:step:done', { stepId: 'plan' });
 
     // In a real flow, we wait for 'agent:approve' here before continuing to Coding
