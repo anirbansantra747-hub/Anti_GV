@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { io } from 'socket.io-client';
-import { buildContext } from '../services/contextService'; // Teammate's context gatherer
+import { contextService } from '../services/contextService'; // Teammate's context gatherer
 
 const SOCKET_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -111,7 +111,11 @@ export const useAgentStore = create((set, get) => {
 
       try {
         // Call teammate's service to get context
-        const contextString = await buildContext();
+        const { contextString } = await contextService.buildContext({
+          activeFile: null,
+          openTabs: [],
+          userPrompt: prompt,
+        });
 
         socket.emit('agent:prompt', {
           prompt,
