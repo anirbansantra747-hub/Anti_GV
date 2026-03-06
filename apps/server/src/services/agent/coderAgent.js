@@ -1,5 +1,7 @@
 import { generateGroqResponse } from '../llm/groqClient.js';
 import { editJsonSchemaInstructions } from './schemas/editSchema.js';
+import { runCritic } from './criticAgent.js';
+import { runFixer } from './fixerAgent.js';
 
 const CODER_SYSTEM_PROMPT = `
 You are an expert Software Engineer Coder Agent.
@@ -57,28 +59,79 @@ Generate the JSON edit response for this step.
         { role: 'user', content: stepPrompt },
       ];
 
+      // 1. Initial Generation
       const responseString = await generateGroqResponse(messages, {
         model: 'llama-3.3-70b-versatile',
         temperature: 0.1, // Keep deterministic for accurate code generation
         jsonMode: true,
       });
 
-      const editResult = JSON.parse(responseString);
+      let editResult = JSON.parse(responseString);
+
+      // 2. Self-Healing Verification Loop
+      let isCorrect = false;
+      let feedback = '';
+      let retryCount = 0;
+      const MAX_RETRIES = 2;
+
+      while (!isCorrect && retryCount <= MAX_RETRIES) {
+        socket.emit('agent:thinking', {
+          message: `Verifying step ${step.stepId} (Attempt ${retryCount + 1})...`,
+        });
+
+        // Pass to Semantic Critic
+        const criticResult = await runCritic({
+          prompt: step.task || step.description,
+          fileContent: fullContext,
+          filePath: step.filePath,
+          proposedEdits: editResult.edits || [], // The schema uses { edits: [...] }
+        });
+
+        isCorrect = criticResult.isCorrect;
+        feedback = criticResult.feedback;
+
+        if (isCorrect) {
+          socket.emit('agent:thinking', { message: `Step ${step.stepId} verified successfully.` });
+          break;
+        }
+
+        // Needs fixing
+        retryCount++;
+        socket.emit('agent:thinking', {
+          message: `Fixing step ${step.stepId} (Retry ${retryCount}/${MAX_RETRIES}): ${feedback.substring(0, 40)}...`,
+        });
+
+        try {
+          const fixedEdits = await runFixer({
+            prompt: step.task || step.description,
+            fileContent: fullContext,
+            filePath: step.filePath,
+            previousEdits: editResult.edits || [],
+            errorFeedback: feedback,
+          });
+
+          editResult = { edits: fixedEdits }; // Update the working edits
+        } catch (fixError) {
+          console.error(`[CoderAgent] Fixer crashed on step ${step.stepId}:`, fixError);
+          break; // Break loop but keep original bad edits to avoid totally dropping the ball
+        }
+      }
+
       edits.push(editResult);
 
-      // In a real flowing app, we would emit these chunks as they stream.
-      // For now, we emit the completed JSON chunk for the frontend to apply to the Shadow Tree.
+      // 3. Emit completed edits to frontend
       socket.emit('agent:step:code', {
         stepId: `code_${step.stepId}`,
         chunk: JSON.stringify(editResult, null, 2),
         provider: 'groq',
+        criticFeedback: feedback || 'Approved on first pass.',
       });
     } catch (error) {
       console.error(`[CoderAgent] Failed to generate code for step ${step.stepId}:`, error);
       socket.emit('agent:error', {
         message: `Coder failed on step ${step.stepId}: ${error.message}`,
       });
-      throw error;
+      // Optionally continue to next step instead of throwing depending on strictness
     }
 
     socket.emit('agent:step:done', { stepId: `code_${step.stepId}` });

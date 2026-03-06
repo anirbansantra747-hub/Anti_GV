@@ -2,8 +2,18 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useAgentStore } from '../../stores/agentStore';
 
 export default function AIPanel() {
-  const { connect, disconnect, isConnected, messages, isThinking, thinkingMessage, sendPrompt } =
-    useAgentStore();
+  const {
+    connect,
+    disconnect,
+    isConnected,
+    messages,
+    isThinking,
+    thinkingMessage,
+    sendPrompt,
+    activeTransactionId,
+    approveTransaction,
+    rejectTransaction,
+  } = useAgentStore();
 
   const [inputMsg, setInputMsg] = useState('');
   const messagesEndRef = useRef(null);
@@ -118,6 +128,25 @@ export default function AIPanel() {
                   </ul>
                   {/* Future: Add Approve button here */}
                 </div>
+              ) : msg.type === 'code' ? (
+                <div>
+                  <div style={{ marginBottom: '8px', color: '#60a5fa' }}>{msg.content}</div>
+                  {msg.criticFeedback && (
+                    <div
+                      style={{
+                        marginTop: '8px',
+                        paddingTop: '8px',
+                        borderTop: '1px solid #334155',
+                        fontSize: '0.75rem',
+                        color: msg.criticFeedback.includes('Approved') ? '#10b981' : '#fbbf24',
+                      }}
+                    >
+                      <strong style={{ opacity: 0.8 }}>Semantic Verifier:</strong>
+                      <br />
+                      {msg.criticFeedback}
+                    </div>
+                  )}
+                </div>
               ) : (
                 msg.content
               )}
@@ -145,6 +174,55 @@ export default function AIPanel() {
         )}
         <div ref={messagesEndRef} />
       </div>
+
+      {activeTransactionId && (
+        <div
+          style={{
+            padding: '12px 16px',
+            background: '#1e293b',
+            borderTop: '1px solid #334155',
+            display: 'flex',
+            gap: '8px',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <span style={{ fontSize: '0.875rem', color: '#cbd5e1' }}>
+            <strong>Pending Edits</strong> (Ref: {activeTransactionId.substring(0, 6)})
+          </span>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              onClick={rejectTransaction}
+              style={{
+                background: 'transparent',
+                color: '#f8fafc',
+                border: '1px solid #475569',
+                padding: '6px 12px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+              }}
+            >
+              Discard
+            </button>
+            <button
+              onClick={approveTransaction}
+              style={{
+                background: '#10b981',
+                color: '#fff',
+                border: 'none',
+                padding: '6px 12px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: 600,
+              }}
+            >
+              Approve
+            </button>
+          </div>
+        </div>
+      )}
 
       <div style={{ padding: '16px', borderTop: '1px solid #1e293b' }}>
         <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '8px' }}>
