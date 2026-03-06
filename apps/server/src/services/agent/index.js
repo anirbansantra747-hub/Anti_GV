@@ -1,0 +1,79 @@
+import { classifyIntent } from './intentClassifier.js';
+import { assembleContext } from './contextAssembler.js';
+// import { generatePlan } from './plannerAgent.js'; // To be implemented in Module 5
+// import { generateCodeEdits } from './coderAgent.js'; // To be implemented in Module 6
+
+/**
+ * Main Agent Orchestrator Pipeline
+ * Runs the sequence: Intent -> Context -> Plan -> Code -> Verify
+ */
+export const runAgentPipeline = async ({ prompt, frontendContext, serverContext, socket }) => {
+  try {
+    socket.emit('agent:thinking', { message: 'Classifying intent...' });
+
+    // 1. Classify Intent
+    const { intent, confidence } = await classifyIntent(prompt);
+    socket.emit('agent:thinking', {
+      message: `Intent classified as ${intent} (${Math.round(confidence * 100)}% confidence)`,
+    });
+
+    // Handle non-coding intents early
+    if (intent === 'ASK') {
+      socket.emit('agent:thinking', { message: 'Answering question...' });
+      // TODO: Just route to basic LLM completion (skipping heavy planning)
+      socket.emit('agent:step:code', {
+        chunk: 'This represents a direct answer for an ASK intent.\n',
+        provider: 'system',
+      });
+      socket.emit('agent:done', { message: 'Answer complete' });
+      return;
+    }
+
+    // 2. Assemble Context
+    socket.emit('agent:thinking', { message: 'Assembling codebase context...' });
+    const fullContext = assembleContext(frontendContext, serverContext);
+
+    // 3. Planning (Module 5 placeholder)
+    socket.emit('agent:thinking', { message: 'Generating execution plan...' });
+    // const plan = await generatePlan(prompt, fullContext);
+    socket.emit('agent:step:start', { stepId: 'plan', description: 'Proposed Plan' });
+
+    // Temporary stub for planning
+    const mockPlan = {
+      summary: 'Mocked plan for testing pipeline',
+      steps: [
+        {
+          stepId: 1,
+          action: 'MODIFY',
+          filePath: frontendContext.activeFile || '/mock/path.js',
+          description: 'Mock edit step',
+        },
+      ],
+    };
+
+    socket.emit('agent:plan', mockPlan);
+    socket.emit('agent:step:done', { stepId: 'plan' });
+
+    // In a real flow, we wait for 'agent:approve' here before continuing to Coding
+    // For now, we simulate continuing immediately
+
+    // 4. Coding (Module 6 placeholder)
+    socket.emit('agent:step:start', { stepId: 'code', description: 'Applying edits' });
+    // await generateCodeEdits(mockPlan, fullContext, socket);
+    socket.emit('agent:step:code', {
+      chunk: `// Mock code generation for ${intent} intent on ${frontendContext.activeFile}\n`,
+      provider: 'system',
+    });
+    socket.emit('agent:step:done', { stepId: 'code' });
+
+    // 5. Verification (Module 8 placeholder)
+    // socket.emit('agent:thinking', { message: 'Verifying code...' });
+
+    socket.emit('agent:done', { message: 'Pipeline complete.' });
+  } catch (error) {
+    console.error('[AgentPipeline] Error:', error);
+    socket.emit('agent:error', {
+      message: error.message || 'An unknown error occurred in the agent pipeline',
+    });
+  }
+};
