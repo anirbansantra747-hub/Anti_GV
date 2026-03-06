@@ -125,6 +125,7 @@ Generate the JSON edit response for this step.
         chunk: JSON.stringify(editResult, null, 2),
         provider: 'groq',
         criticFeedback: feedback || 'Approved on first pass.',
+        file: step.filePath,
       });
     } catch (error) {
       console.error(`[CoderAgent] Failed to generate code for step ${step.stepId}:`, error);
