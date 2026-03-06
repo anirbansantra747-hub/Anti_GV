@@ -1,7 +1,7 @@
 import { classifyIntent } from './intentClassifier.js';
 import { assembleContext } from './contextAssembler.js';
 import { generatePlan } from './plannerAgent.js';
-// import { generateCodeEdits } from './coderAgent.js'; // To be implemented in Module 6
+import { generateCodeEdits } from './coderAgent.js';
 
 /**
  * Main Agent Orchestrator Pipeline
@@ -45,14 +45,14 @@ export const runAgentPipeline = async ({ prompt, frontendContext, serverContext,
     // In a real flow, we wait for 'agent:approve' here before continuing to Coding
     // For now, we simulate continuing immediately
 
-    // 4. Coding (Module 6 placeholder)
-    socket.emit('agent:step:start', { stepId: 'code', description: 'Applying edits' });
-    // await generateCodeEdits(mockPlan, fullContext, socket);
-    socket.emit('agent:step:code', {
-      chunk: `// Mock code generation for ${intent} intent on ${frontendContext.activeFile}\n`,
-      provider: 'system',
-    });
-    socket.emit('agent:step:done', { stepId: 'code' });
+    // 4. Coding (Module 6)
+    socket.emit('agent:thinking', { message: 'Applying edits based on plan...' });
+
+    // Instead of mock code generation, we pass the plan + context to the real Coder Agent
+    const edits = await generateCodeEdits(plan, fullContext, socket);
+
+    // Once the edits are fully generated, signal that the coding phase is done
+    socket.emit('agent:step:done', { stepId: 'code-generation' });
 
     // 5. Verification (Module 8 placeholder)
     // socket.emit('agent:thinking', { message: 'Verifying code...' });
