@@ -1,4 +1,4 @@
-import { llmRouter } from '../llm/llmRouter.js';
+import { generateResponse } from '../llm/llmRouter.js';
 import { z } from 'zod';
 
 const criticSchema = z.object({
@@ -53,13 +53,14 @@ ${JSON.stringify(proposedEdits, null, 2)}
 Analyze the edits. Are they correct? Respond in JSON matching the schema.`;
 
   try {
-    const response = await llmRouter.generateJSON({
-      messages: [
+    const responseText = await generateResponse(
+      [
         { role: 'system', content: criticSystemPrompt },
         { role: 'user', content: userContent },
       ],
-      zodSchema: criticSchema,
-    });
+      { jsonMode: true }
+    );
+    const response = JSON.parse(responseText);
 
     return {
       isCorrect: response.isCorrect,
