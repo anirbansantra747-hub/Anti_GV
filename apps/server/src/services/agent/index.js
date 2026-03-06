@@ -2,6 +2,7 @@ import { classifyIntent } from './intentClassifier.js';
 import { assembleContext } from './contextAssembler.js';
 import { generatePlan } from './plannerAgent.js';
 import { generateCodeEdits } from './coderAgent.js';
+import { generateResponse } from '../llm/llmRouter.js';
 
 /**
  * Main Agent Orchestrator Pipeline
@@ -19,13 +20,27 @@ export const runAgentPipeline = async ({ prompt, frontendContext, serverContext,
 
     // Handle non-coding intents early
     if (intent === 'ASK') {
+      socket.emit('agent:thinking', { message: 'Assembling codebase context...' });
+      const fullContext = assembleContext(frontendContext, serverContext);
+
       socket.emit('agent:thinking', { message: 'Answering question...' });
-      // TODO: Just route to basic LLM completion (skipping heavy planning)
-      socket.emit('agent:step:code', {
-        chunk: 'This represents a direct answer for an ASK intent.\n',
-        provider: 'system',
-      });
-      socket.emit('agent:done', { message: 'Answer complete' });
+
+      const askPrompt = `
+You are an expert Senior Software Engineer.
+Answer the user's question accurately and concisely based on the following codebase context.
+
+CONTEXT:
+${fullContext}
+
+USER QUESTION:
+${prompt}
+`;
+      const answer = await generateResponse([
+        { role: 'system', content: 'You are a helpful coding assistant.' },
+        { role: 'user', content: askPrompt },
+      ]);
+
+      socket.emit('agent:done', { message: answer });
       return;
     }
 
