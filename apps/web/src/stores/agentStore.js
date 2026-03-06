@@ -46,19 +46,67 @@ export const useAgentStore = create((set, get) => {
         set({ isThinking: true, thinkingMessage: `Executing: ${payload.description}` });
       });
 
-      socket.on('agent:step:code', (payload) => {
-        // In a more complex app, we accumulate chunks. For now we just push the edit block msg.
-        set((state) => ({
-          messages: [
-            ...state.messages,
-            {
-              id: Date.now(),
-              role: 'assistant',
-              type: 'code',
-              content: `Generated edits for ${payload.stepId}`,
-            },
-          ],
-        }));
+      socket.on('agent:step:code', async (payload) => {
+        const state = get();
+        let currentTxId = state.activeTransactionId;
+
+        // 1. Begin a transaction if we don't have one open
+        if (!currentTxId) {
+          // Try to import diffService dynamically or safely
+          try {
+            const { diffService } = await import('../services/diffService');
+            currentTxId = diffService.beginTransaction();
+            set({ activeTransactionId: currentTxId });
+          } catch (e) {
+            console.error('DiffService not ready yet', e);
+          }
+        }
+
+        try {
+          // 2. Parse the edits
+          const parsedChunk = JSON.parse(payload.chunk);
+          if (parsedChunk && parsedChunk.edits && currentTxId) {
+            const { diffService } = await import('../services/diffService');
+
+            // Format the edits into the FilePatch shape expected by DiffService
+            const patch = {
+              path: payload.file || 'unknown.js',
+              operations: parsedChunk.edits.map((edit) => ({
+                type: edit.search ? 'replace' : 'insert',
+                content: edit.replace,
+              })),
+            };
+
+            // Apply patch to shadow tree
+            await diffService.applyPatch(currentTxId, patch, 'AI_AGENT');
+          }
+
+          set((state) => ({
+            messages: [
+              ...state.messages,
+              {
+                id: Date.now(),
+                role: 'assistant',
+                type: 'code',
+                content: `Staged edits for ${payload.file || 'file'} in Shadow Tree (TX: ${currentTxId ? currentTxId.substring(0, 6) : 'none'})`,
+                criticFeedback: payload.criticFeedback,
+              },
+            ],
+          }));
+        } catch (err) {
+          console.error('[AgentStore] Failed to apply edit to Shadow Tree:', err);
+          set((state) => ({
+            messages: [
+              ...state.messages,
+              {
+                id: Date.now(),
+                role: 'assistant',
+                type: 'error',
+                content: `Failed to stage edits: ${err.message}`,
+              },
+            ],
+          }));
+        }
       });
 
       socket.on('agent:step:done', () => {
@@ -150,6 +198,65 @@ export const useAgentStore = create((set, get) => {
       if (!socket) return;
       socket.emit('agent:cancel', {});
       set({ isThinking: false, currentPlan: null });
+    },
+
+    approveTransaction: async () => {
+      const txId = get().activeTransactionId;
+      if (!txId) return;
+
+      try {
+        const { diffService } = await import('../services/diffService');
+        await diffService.commit(txId);
+        set((state) => ({
+          activeTransactionId: null,
+          messages: [
+            ...state.messages,
+            {
+              id: Date.now(),
+              role: 'assistant',
+              type: 'text',
+              content: '✅ Code changes applied to standard workspace. Transaction committed.',
+            },
+          ],
+        }));
+      } catch (err) {
+        console.error('Failed to commit transaction:', err);
+        set((state) => ({
+          messages: [
+            ...state.messages,
+            {
+              id: Date.now(),
+              role: 'assistant',
+              type: 'error',
+              content: `Commit failed: ${err.message}`,
+            },
+          ],
+        }));
+      }
+    },
+
+    rejectTransaction: async () => {
+      const txId = get().activeTransactionId;
+      if (!txId) return;
+
+      try {
+        const { diffService } = await import('../services/diffService');
+        diffService.rollback(txId);
+        set((state) => ({
+          activeTransactionId: null,
+          messages: [
+            ...state.messages,
+            {
+              id: Date.now(),
+              role: 'assistant',
+              type: 'text',
+              content: '❌ Code changes discarded. Transaction rolled back.',
+            },
+          ],
+        }));
+      } catch (err) {
+        console.error('Failed to rollback transaction:', err);
+      }
     },
   };
 });
