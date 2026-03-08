@@ -2,7 +2,9 @@ import { classifyIntent } from './intentClassifier.js';
 import { assembleContext } from './contextAssembler.js';
 import { generatePlan } from './plannerAgent.js';
 import { generateCodeEdits } from './coderAgent.js';
-import { generateResponse } from '../llm/llmRouter.js';
+import { generateResponse, streamResponse } from '../llm/llmRouter.js';
+import { handleStream } from '../llm/streamHandler.js';
+import crypto from 'crypto';
 
 /**
  * Main Agent Orchestrator Pipeline
@@ -21,9 +23,11 @@ export const runAgentPipeline = async ({ prompt, frontendContext, serverContext,
     // Handle non-coding intents early
     if (intent === 'ASK') {
       socket.emit('agent:thinking', { message: 'Assembling codebase context...' });
-      const fullContext = assembleContext(frontendContext, serverContext);
+      const fullContext = await assembleContext(frontendContext, serverContext, prompt);
 
       socket.emit('agent:thinking', { message: 'Answering question...' });
+      // Notify UI we are done "thinking" so the raw message can show up
+      socket.emit('agent:step:done', { stepId: 'ask-prep' });
 
       const askPrompt = `
 You are an expert Senior Software Engineer.
@@ -35,18 +39,34 @@ ${fullContext}
 USER QUESTION:
 ${prompt}
 `;
-      const answer = await generateResponse([
-        { role: 'system', content: 'You are a helpful coding assistant.' },
-        { role: 'user', content: askPrompt },
-      ]);
 
-      socket.emit('agent:done', { message: answer });
+      const messageId = crypto.randomUUID();
+      // Notify the frontend that a new streaming message is starting
+      socket.emit('agent:message:start', { messageId });
+
+      const { stream, provider } = await streamResponse(
+        [
+          { role: 'system', content: 'You are a helpful coding assistant.' },
+          { role: 'user', content: askPrompt },
+        ],
+        {
+          model: 'llama-3.3-70b-versatile', // Force the versatile model for answers
+        }
+      );
+
+      // Stream the tokens to the frontend
+      await handleStream(stream, socket, provider, {
+        eventName: 'agent:message:stream',
+        extraPayload: { messageId },
+      });
+
+      socket.emit('agent:done', { messageId, message: '' }); // Send empty message to just resolve the loading state
       return;
     }
 
     // 2. Assemble Context
     socket.emit('agent:thinking', { message: 'Assembling codebase context...' });
-    const fullContext = assembleContext(frontendContext, serverContext);
+    const fullContext = await assembleContext(frontendContext, serverContext, prompt);
 
     // 3. Planning (Module 5)
     socket.emit('agent:thinking', { message: 'Generating execution plan...' });

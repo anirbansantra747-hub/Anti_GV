@@ -8,8 +8,10 @@
  * @param {any} stream - the stream object
  * @param {any} socket - Socket.io socket object
  * @param {string} provider - tracking which provider generated the stream
+ * @param {Object} options - { eventName, extraPayload }
  */
-export const handleStream = async (stream, socket, provider) => {
+export const handleStream = async (stream, socket, provider, options = {}) => {
+  const { eventName = 'agent:step:code', extraPayload = {} } = options;
   let fullContent = '';
 
   // Handle async iterable from groq-sdk
@@ -18,7 +20,7 @@ export const handleStream = async (stream, socket, provider) => {
       const content = chunk.choices[0]?.delta?.content || '';
       if (content) {
         fullContent += content;
-        socket.emit('agent:step:code', { chunk: content, provider });
+        socket.emit(eventName, { ...extraPayload, chunk: content, provider });
       }
     }
     return fullContent;
@@ -50,7 +52,7 @@ export const handleStream = async (stream, socket, provider) => {
             const content = parsed.choices?.[0]?.delta?.content || '';
             if (content) {
               fullContent += content;
-              socket.emit('agent:step:code', { chunk: content, provider });
+              socket.emit(eventName, { ...extraPayload, chunk: content, provider });
             }
           } catch (e) {
             // Unparseable JSON in a stream frame, log it if needed but continue
