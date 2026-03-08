@@ -20,9 +20,10 @@ class FsSubscriptions {
    */
   onFileChanged(path, callback) {
     return bus.on(Events.FS_MUTATED, (payload) => {
-      // Filter: only notify if the mutation likely affects this path
-      // (Full per-path tracking would require hooking into writeFileSync)
-      callback({ path, workspaceId: payload?.workspaceId });
+      // Only notify if the mutation matches this path, or if path is null (bulk op)
+      if (payload?.path === null || payload?.path === path) {
+        callback({ path, workspaceId: payload?.workspaceId });
+      }
     });
   }
 

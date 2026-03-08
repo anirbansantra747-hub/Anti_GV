@@ -11,12 +11,16 @@ import { WorkspaceState } from '../models/WorkspaceContracts.js';
 
 // Legal transitions: { from: Set<allowedFrom> }
 const TRANSITIONS = {
-  [WorkspaceState.AI_PENDING]:  new Set([WorkspaceState.IDLE]),
+  [WorkspaceState.AI_PENDING]: new Set([WorkspaceState.IDLE]),
   [WorkspaceState.DIFF_REVIEW]: new Set([WorkspaceState.AI_PENDING]),
-  [WorkspaceState.COMMITTING]:  new Set([WorkspaceState.DIFF_REVIEW]),
-  [WorkspaceState.CONFLICT]:    new Set([WorkspaceState.IDLE, WorkspaceState.COMMITTING]),
-  [WorkspaceState.ERROR]:       new Set([WorkspaceState.AI_PENDING, WorkspaceState.COMMITTING]),
-  [WorkspaceState.IDLE]:        new Set([WorkspaceState.COMMITTING, WorkspaceState.ERROR, WorkspaceState.CONFLICT]),
+  [WorkspaceState.COMMITTING]: new Set([WorkspaceState.DIFF_REVIEW]),
+  [WorkspaceState.CONFLICT]: new Set([WorkspaceState.IDLE, WorkspaceState.COMMITTING]),
+  [WorkspaceState.ERROR]: new Set([WorkspaceState.AI_PENDING, WorkspaceState.COMMITTING]),
+  [WorkspaceState.IDLE]: new Set([
+    WorkspaceState.COMMITTING,
+    WorkspaceState.ERROR,
+    WorkspaceState.CONFLICT,
+  ]),
 };
 
 class WorkspaceMachine {
@@ -72,7 +76,10 @@ class WorkspaceMachine {
     bus.on(Events.AI_REJECT_DIFF, () => {
       memfs.workspace.state = WorkspaceState.IDLE;
       memfs.workspace.locked = false;
-      bus.emit(Events.WS_STATE_CHANGED, { from: WorkspaceState.DIFF_REVIEW, to: WorkspaceState.IDLE });
+      bus.emit(Events.WS_STATE_CHANGED, {
+        from: WorkspaceState.DIFF_REVIEW,
+        to: WorkspaceState.IDLE,
+      });
     });
 
     // Conflict detected during remote sync

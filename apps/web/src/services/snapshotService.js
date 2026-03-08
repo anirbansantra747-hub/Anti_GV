@@ -33,7 +33,7 @@ class SnapshotService {
     const data = encoder.encode(payload);
     const hashBuffer = await crypto.subtle.digest('SHA-256', data);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
   }
 
   /**
@@ -49,7 +49,7 @@ class SnapshotService {
       type: 'dir',
       id: node.id,
       name: node.name,
-      children: new Map()
+      children: new Map(),
     };
     for (const [key, val] of node.children) {
       clonedDir.children.set(key, this.cloneTree(val));
