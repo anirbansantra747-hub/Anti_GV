@@ -15,10 +15,10 @@ export class FsError extends Error {
    */
   constructor(message, code, path, remedy) {
     super(message);
-    this.name    = this.constructor.name;
-    this.code    = code;
-    this.path    = path ?? null;
-    this.remedy  = remedy ?? null;
+    this.name = this.constructor.name;
+    this.code = code;
+    this.path = path ?? null;
+    this.remedy = remedy ?? null;
     this.fsError = true; // Discriminant flag
   }
 }
@@ -27,8 +27,12 @@ export class FsError extends Error {
 
 export class FsNotFoundError extends FsError {
   constructor(path) {
-    super(`No such file or directory: '${path}'`, 'FS_NOT_FOUND', path,
-      'Check the path spelling or verify the file exists before accessing.');
+    super(
+      `No such file or directory: '${path}'`,
+      'FS_NOT_FOUND',
+      path,
+      'Check the path spelling or verify the file exists before accessing.'
+    );
   }
 }
 
@@ -36,7 +40,8 @@ export class FsPermissionError extends FsError {
   constructor(path, sourceModule) {
     super(
       `Module '${sourceModule ?? 'unknown'}' does not have write permission for '${path}'`,
-      'FS_PERMISSION_DENIED', path,
+      'FS_PERMISSION_DENIED',
+      path,
       'This module is read-only. Use the DiffService to propose changes via a Shadow Tree.'
     );
   }
@@ -46,7 +51,8 @@ export class FsLockedError extends FsError {
   constructor(currentState) {
     super(
       `Write rejected — workspace is locked (state: ${currentState})`,
-      'FS_LOCKED', null,
+      'FS_LOCKED',
+      null,
       'Wait for the current AI mutation to complete or the user to resolve the diff review.'
     );
   }
@@ -56,7 +62,8 @@ export class FsCorruptionError extends FsError {
   constructor(path, detail) {
     super(
       `Integrity check failed for '${path}': ${detail}`,
-      'FS_CORRUPTION', path,
+      'FS_CORRUPTION',
+      path,
       'Reload workspace from the last known-good IndexedDB snapshot or remote backup.'
     );
   }
@@ -66,7 +73,8 @@ export class FsConflictError extends FsError {
   constructor(localVersion, remoteVersion) {
     super(
       `Remote conflict: local@${localVersion?.slice(0, 8)} ≠ remote@${remoteVersion?.slice(0, 8)}`,
-      'FS_CONFLICT', null,
+      'FS_CONFLICT',
+      null,
       'Open the Conflict Resolver to merge changes before pushing again.'
     );
   }
@@ -76,7 +84,8 @@ export class FsInvalidPathError extends FsError {
   constructor(path, reason) {
     super(
       `Invalid path '${path}': ${reason}`,
-      'FS_INVALID_PATH', path,
+      'FS_INVALID_PATH',
+      path,
       'Paths must be absolute, must not contain "..", null bytes, or reserved names.'
     );
   }

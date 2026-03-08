@@ -12,12 +12,12 @@
  *  'write:sandboxed' - Can write ONLY to a scoped workspace sandbox path
  */
 export const MODULE_PERMISSIONS = {
-  FILE_SYSTEM:   ['read', 'write', 'diff'],  // Internal — full authority
-  AI_AGENT:      ['read', 'diff'],            // Can READ + propose patches via Shadow Tree only
-  CODE_RUNNER:   ['read'],                    // Read-only: reads files to execute them
+  FILE_SYSTEM: ['read', 'write', 'diff'], // Internal — full authority
+  AI_AGENT: ['read', 'diff'], // Can READ + propose patches via Shadow Tree only
+  CODE_RUNNER: ['read'], // Read-only: reads files to execute them
   LEARNING_MODE: ['read', 'write:sandboxed'], // Can write to a sandboxed exercise path
-  RAG_INDEXER:   ['read'],                    // Read-only: indexes files for ChromaDB
-  UI:            ['read', 'write'],           // Direct user interaction = full write
+  RAG_INDEXER: ['read'], // Read-only: indexes files for ChromaDB
+  UI: ['read', 'write'], // Direct user interaction = full write
 };
 
 /**

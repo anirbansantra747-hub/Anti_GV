@@ -14,15 +14,15 @@ import { memfs } from './memfsService.js';
 import { blobStore } from './blobStore.js';
 import { useFileSystemStore } from '../stores/fileSystemStore.js';
 
-const LOCK_NAME    = 'anti_gv_write_lock';
+const LOCK_NAME = 'anti_gv_write_lock';
 const CHANNEL_NAME = 'anti_gv_sync';
 
 // BroadcastChannel message types
 const MSG = {
-  FILE_EDIT_INTENT: 'file_edit_intent',  // Slave → Master: user typed
-  STATE_SYNC:       'state_sync',         // Master → All: new FS state
-  CACHE_SAVED:      'cache_saved',        // Master → All: IDB write done
-  LOCK_STATUS:      'lock_status',        // Master → All: who is master
+  FILE_EDIT_INTENT: 'file_edit_intent', // Slave → Master: user typed
+  STATE_SYNC: 'state_sync', // Master → All: new FS state
+  CACHE_SAVED: 'cache_saved', // Master → All: IDB write done
+  LOCK_STATUS: 'lock_status', // Master → All: who is master
 };
 
 class TabSyncService {
@@ -53,10 +53,8 @@ class TabSyncService {
     this._lockAbort = new AbortController();
 
     // Non-blocking lock request: if we get it we're master; if not we're slave.
-    navigator.locks.request(
-      LOCK_NAME,
-      { mode: 'exclusive', signal: this._lockAbort.signal },
-      async () => {
+    navigator.locks
+      .request(LOCK_NAME, { mode: 'exclusive', signal: this._lockAbort.signal }, async () => {
         this.role = 'master';
         console.log('[TabSync] 👑 This tab is MASTER.');
 
@@ -68,10 +66,10 @@ class TabSyncService {
           this._lockAbort.signal.addEventListener('abort', reject);
           window.addEventListener('beforeunload', () => reject(new Error('tab closing')));
         });
-      }
-    ).catch((err) => {
-      if (err?.name === 'AbortError') return;
-    });
+      })
+      .catch((err) => {
+        if (err?.name === 'AbortError') return;
+      });
 
     // Small delay to see if we got the lock
     await new Promise((r) => setTimeout(r, 80));
@@ -146,16 +144,16 @@ class TabSyncService {
   _serializeState() {
     return {
       workspaceId: memfs.workspace.id,
-      version:     memfs.workspace.version,
-      state:       memfs.workspace.state,
+      version: memfs.workspace.version,
+      state: memfs.workspace.state,
     };
   }
 
   _applyStateSnapshot(snapshot) {
     if (!snapshot) return;
-    memfs.workspace.id      = snapshot.workspaceId;
+    memfs.workspace.id = snapshot.workspaceId;
     memfs.workspace.version = snapshot.version;
-    memfs.workspace.state   = snapshot.state;
+    memfs.workspace.state = snapshot.state;
     // Trigger reactive store update for slave UI
     useFileSystemStore.getState().syncFromMemfs();
     console.log('[TabSync] Slave state synced from master.');

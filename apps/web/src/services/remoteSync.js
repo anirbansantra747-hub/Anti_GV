@@ -43,7 +43,12 @@ class RemoteSync {
 
     // 2. Conflict check
     if (remoteVersion && remoteVersion !== localVersion) {
-      console.warn('[RemoteSync] Conflict detected! remote:', remoteVersion, 'local:', localVersion);
+      console.warn(
+        '[RemoteSync] Conflict detected! remote:',
+        remoteVersion,
+        'local:',
+        localVersion
+      );
       bus.emit(Events.CONFLICT_DETECTED, { localVersion, remoteVersion });
       return;
     }
@@ -82,7 +87,9 @@ class RemoteSync {
       throw new Error(`[RemoteSync] Push failed: ${res.status} ${res.statusText}`);
     }
 
-    console.log(`[RemoteSync] ✅ Pushed ${Object.keys(files).length} files, ${missingBlobIds.length} new blobs.`);
+    console.log(
+      `[RemoteSync] ✅ Pushed ${Object.keys(files).length} files, ${missingBlobIds.length} new blobs.`
+    );
   }
 
   /**
@@ -102,22 +109,22 @@ class RemoteSync {
       // Populate blob store
       for (const [blobId, content] of Object.entries(snapshot.blobs)) {
         if (!blobStore.exists(blobId)) {
-          const data = Array.isArray(content)
-            ? new Uint8Array(content).buffer
-            : content;
+          const data = Array.isArray(content) ? new Uint8Array(content).buffer : content;
           blobStore.blobs.set(blobId, data);
         }
       }
 
       // Rebuild tree (reuse crashRecovery logic — inline here for independence)
       const root = this._rebuildTree(snapshot.files);
-      memfs.workspace.root    = root;
-      memfs.workspace.id      = workspaceId;
+      memfs.workspace.root = root;
+      memfs.workspace.id = workspaceId;
       memfs.workspace.version = snapshot.version;
-      memfs.workspace.state   = 'IDLE';
+      memfs.workspace.state = 'IDLE';
 
       memfs._triggerWorkspaceUpdate();
-      console.log(`[RemoteSync] ✅ Fetched ${Object.keys(snapshot.files).length} files from Tier 3.`);
+      console.log(
+        `[RemoteSync] ✅ Fetched ${Object.keys(snapshot.files).length} files from Tier 3.`
+      );
       return true;
     } catch (err) {
       console.error('[RemoteSync] Fetch failed:', err);
@@ -182,14 +189,23 @@ class RemoteSync {
       for (let i = 0; i < segments.length - 1; i++) {
         const seg = segments[i];
         if (!current.children.has(seg)) {
-          current.children.set(seg, { type: 'dir', id: crypto.randomUUID(), name: seg, children: new Map() });
+          current.children.set(seg, {
+            type: 'dir',
+            id: crypto.randomUUID(),
+            name: seg,
+            children: new Map(),
+          });
         }
         current = current.children.get(seg);
       }
       const fileName = segments[segments.length - 1];
       current.children.set(fileName, {
-        type: 'file', id: crypto.randomUUID(), name: fileName,
-        hash: meta.hash, blobId: meta.blobId, binary: meta.binary ?? false,
+        type: 'file',
+        id: crypto.randomUUID(),
+        name: fileName,
+        hash: meta.hash,
+        blobId: meta.blobId,
+        binary: meta.binary ?? false,
       });
     }
     return root;

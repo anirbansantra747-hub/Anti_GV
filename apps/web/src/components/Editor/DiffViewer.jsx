@@ -21,9 +21,9 @@ import { bus, Events } from '../../services/eventBus.js';
  */
 export function DiffViewer({ txId, patchedPaths, onClose }) {
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [diffs, setDiffs]               = useState({});   // { [path]: { original, proposed } }
-  const [decisions, setDecisions]       = useState({});   // { [path]: 'accept' | 'reject' }
-  const [isLoading, setIsLoading]       = useState(true);
+  const [diffs, setDiffs] = useState({}); // { [path]: { original, proposed } }
+  const [decisions, setDecisions] = useState({}); // { [path]: 'accept' | 'reject' }
+  const [isLoading, setIsLoading] = useState(true);
 
   const editorRef = useRef(null);
   const diffEditorRef = useRef(null);
@@ -39,7 +39,9 @@ export function DiffViewer({ txId, patchedPaths, onClose }) {
       if (!cancelled) setDiffs(results);
       setIsLoading(false);
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [txId, patchedPaths]);
 
   // Mount/update Monaco DiffEditor when active file changes
@@ -79,7 +81,7 @@ export function DiffViewer({ txId, patchedPaths, onClose }) {
   }, [currentIndex, diffs, isLoading]);
 
   const currentPath = patchedPaths[currentIndex];
-  const allDecided  = patchedPaths.every((p) => decisions[p]);
+  const allDecided = patchedPaths.every((p) => decisions[p]);
 
   function decide(path, choice) {
     setDecisions((prev) => ({ ...prev, [path]: choice }));
@@ -168,14 +170,18 @@ export function DiffViewer({ txId, patchedPaths, onClose }) {
         <div style={styles.footer}>
           {allDecided && (
             <button style={{ ...styles.btn, ...styles.btnCommit }} onClick={handleFinalCommit}>
-              Apply {patchedPaths.filter((p) => decisions[p] === 'accept').length} accepted change(s)
+              Apply {patchedPaths.filter((p) => decisions[p] === 'accept').length} accepted
+              change(s)
             </button>
           )}
-          <button style={{ ...styles.btn, ...styles.btnCancel }} onClick={() => {
-            diffService.rollback(txId);
-            bus.emit(Events.AI_REJECT_DIFF);
-            onClose();
-          }}>
+          <button
+            style={{ ...styles.btn, ...styles.btnCancel }}
+            onClick={() => {
+              diffService.rollback(txId);
+              bus.emit(Events.AI_REJECT_DIFF);
+              onClose();
+            }}
+          >
             Cancel All
           </button>
         </div>
@@ -189,9 +195,19 @@ export function DiffViewer({ txId, patchedPaths, onClose }) {
 function guessLanguage(path) {
   const ext = path.split('.').pop()?.toLowerCase();
   const map = {
-    js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript',
-    py: 'python', css: 'css', html: 'html', json: 'json', md: 'markdown',
-    sh: 'shell', rs: 'rust', go: 'go', java: 'java',
+    js: 'javascript',
+    jsx: 'javascript',
+    ts: 'typescript',
+    tsx: 'typescript',
+    py: 'python',
+    css: 'css',
+    html: 'html',
+    json: 'json',
+    md: 'markdown',
+    sh: 'shell',
+    rs: 'rust',
+    go: 'go',
+    java: 'java',
   };
   return map[ext] ?? 'plaintext';
 }
@@ -200,49 +216,89 @@ function guessLanguage(path) {
 
 const styles = {
   overlay: {
-    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999,
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(0,0,0,0.75)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 9999,
   },
   loadingBox: {
-    background: '#1e1e2e', borderRadius: 12, padding: 40,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    background: '#1e1e2e',
+    borderRadius: 12,
+    padding: 40,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   panel: {
-    background: '#1e1e2e', borderRadius: 12, width: '90vw', maxWidth: 1200,
-    maxHeight: '90vh', display: 'flex', flexDirection: 'column',
-    boxShadow: '0 25px 60px rgba(0,0,0,0.6)', overflow: 'hidden',
+    background: '#1e1e2e',
+    borderRadius: 12,
+    width: '90vw',
+    maxWidth: 1200,
+    maxHeight: '90vh',
+    display: 'flex',
+    flexDirection: 'column',
+    boxShadow: '0 25px 60px rgba(0,0,0,0.6)',
+    overflow: 'hidden',
   },
   header: {
-    padding: '16px 24px 12px', borderBottom: '1px solid #2d2d44',
-    display: 'flex', alignItems: 'baseline', gap: 12,
+    padding: '16px 24px 12px',
+    borderBottom: '1px solid #2d2d44',
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 12,
   },
-  title:  { margin: 0, color: '#e2e8f0', fontSize: 18, fontWeight: 700 },
+  title: { margin: 0, color: '#e2e8f0', fontSize: 18, fontWeight: 700 },
   subtitle: { color: '#94a3b8', fontSize: 13 },
   fileTabs: {
-    display: 'flex', gap: 6, padding: '10px 16px',
-    background: '#161622', borderBottom: '1px solid #2d2d44', overflowX: 'auto',
+    display: 'flex',
+    gap: 6,
+    padding: '10px 16px',
+    background: '#161622',
+    borderBottom: '1px solid #2d2d44',
+    overflowX: 'auto',
   },
   fileTab: {
-    padding: '5px 12px', borderRadius: 6, border: '1px solid #3d3d5c',
-    background: '#222236', color: '#94a3b8', cursor: 'pointer', fontSize: 12,
-    fontFamily: 'JetBrains Mono, monospace', whiteSpace: 'nowrap',
+    padding: '5px 12px',
+    borderRadius: 6,
+    border: '1px solid #3d3d5c',
+    background: '#222236',
+    color: '#94a3b8',
+    cursor: 'pointer',
+    fontSize: 12,
+    fontFamily: 'JetBrains Mono, monospace',
+    whiteSpace: 'nowrap',
   },
   fileTabActive: { background: '#3b82f6', color: '#fff', borderColor: '#3b82f6' },
   monacoPane: { flex: 1, minHeight: 0 },
   fileActions: {
-    display: 'flex', gap: 10, padding: '10px 16px', borderTop: '1px solid #2d2d44',
+    display: 'flex',
+    gap: 10,
+    padding: '10px 16px',
+    borderTop: '1px solid #2d2d44',
     background: '#161622',
   },
   footer: {
-    display: 'flex', gap: 10, padding: '12px 16px', borderTop: '1px solid #2d2d44',
-    background: '#12121c', justifyContent: 'flex-end',
+    display: 'flex',
+    gap: 10,
+    padding: '12px 16px',
+    borderTop: '1px solid #2d2d44',
+    background: '#12121c',
+    justifyContent: 'flex-end',
   },
   btn: {
-    padding: '8px 18px', borderRadius: 8, border: 'none', cursor: 'pointer',
-    fontSize: 13, fontWeight: 600, transition: 'opacity 0.15s',
+    padding: '8px 18px',
+    borderRadius: 8,
+    border: 'none',
+    cursor: 'pointer',
+    fontSize: 13,
+    fontWeight: 600,
+    transition: 'opacity 0.15s',
   },
-  btnAccept:  { background: '#22c55e', color: '#fff' },
-  btnReject:  { background: '#ef4444', color: '#fff' },
-  btnCommit:  { background: '#3b82f6', color: '#fff' },
-  btnCancel:  { background: '#374151', color: '#d1d5db' },
+  btnAccept: { background: '#22c55e', color: '#fff' },
+  btnReject: { background: '#ef4444', color: '#fff' },
+  btnCommit: { background: '#3b82f6', color: '#fff' },
+  btnCancel: { background: '#374151', color: '#d1d5db' },
 };

@@ -53,19 +53,23 @@ export async function bootstrap() {
   bus.on(Events.FS_INTEGRITY_FAIL, ({ storedVersion, computedVersion, error }) => {
     console.error(
       `[Bootstrap] ⚠️ FS INTEGRITY FAILURE\n` +
-      `  Stored:   ${storedVersion?.slice(0, 8)}\n` +
-      `  Computed: ${computedVersion?.slice(0, 8)}\n` +
-      `  Action:   Workspace frozen in ERROR state. Please reload.`
+        `  Stored:   ${storedVersion?.slice(0, 8)}\n` +
+        `  Computed: ${computedVersion?.slice(0, 8)}\n` +
+        `  Action:   Workspace frozen in ERROR state. Please reload.`
     );
     // Dispatch a custom DOM event so React error boundaries can surface this
-    window.dispatchEvent(new CustomEvent('antigv:fs:error', {
-      detail: { code: 'FS_CORRUPTION', error }
-    }));
+    window.dispatchEvent(
+      new CustomEvent('antigv:fs:error', {
+        detail: { code: 'FS_CORRUPTION', error },
+      })
+    );
   });
 
   // Surface typed FS errors from the eventBus to the global error handler
   bus.on(Events.CONFLICT_DETECTED, ({ localVersion, remoteVersion }) => {
-    console.warn(`[Bootstrap] Conflict detected: ${localVersion?.slice(0, 8)} ↔ ${remoteVersion?.slice(0, 8)}`);
+    console.warn(
+      `[Bootstrap] Conflict detected: ${localVersion?.slice(0, 8)} ↔ ${remoteVersion?.slice(0, 8)}`
+    );
   });
 
   console.log('[Bootstrap] ✅ V3 Workspace Runtime ready.');

@@ -26,9 +26,7 @@ export const useEditorStore = create((set, get) => ({
   /** Open a file tab. Sets it as active. */
   openFile(path) {
     set((state) => {
-      const openTabs = state.openTabs.includes(path)
-        ? state.openTabs
-        : [...state.openTabs, path];
+      const openTabs = state.openTabs.includes(path) ? state.openTabs : [...state.openTabs, path];
       return { activeFile: path, openTabs };
     });
   },
@@ -38,9 +36,7 @@ export const useEditorStore = create((set, get) => ({
     set((state) => {
       const openTabs = state.openTabs.filter((t) => t !== path);
       const activeFile =
-        state.activeFile === path
-          ? openTabs[openTabs.length - 1] ?? null
-          : state.activeFile;
+        state.activeFile === path ? (openTabs[openTabs.length - 1] ?? null) : state.activeFile;
 
       const dirtyFiles = new Set(state.dirtyFiles);
       dirtyFiles.delete(path);
@@ -54,10 +50,7 @@ export const useEditorStore = create((set, get) => ({
     set((state) => {
       const dirtyFiles = new Set(state.dirtyFiles);
       dirtyFiles.add(path);
-      const recentlyEdited = [
-        path,
-        ...state.recentlyEdited.filter((p) => p !== path),
-      ].slice(0, 20); // Keep last 20 entries
+      const recentlyEdited = [path, ...state.recentlyEdited.filter((p) => p !== path)].slice(0, 20); // Keep last 20 entries
       return { dirtyFiles, recentlyEdited };
     });
   },

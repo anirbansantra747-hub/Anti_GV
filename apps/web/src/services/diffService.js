@@ -129,14 +129,14 @@ class DiffService {
     for (const op of patch.operations) {
       if (op.type === 'replace') {
         const start = (op.startLine ?? 1) - 1;
-        const end   = (op.endLine   ?? start + 1) - 1;
+        const end = (op.endLine ?? start + 1) - 1;
         lines.splice(start, end - start + 1, ...op.content.split('\n'));
       } else if (op.type === 'insert') {
         const at = (op.startLine ?? lines.length + 1) - 1;
         lines.splice(at, 0, ...op.content.split('\n'));
       } else if (op.type === 'delete') {
         const start = (op.startLine ?? 1) - 1;
-        const end   = (op.endLine   ?? start) - 1;
+        const end = (op.endLine ?? start) - 1;
         lines.splice(start, end - start + 1);
       }
     }
@@ -219,7 +219,9 @@ class DiffService {
 
     // Notify all listeners: tree changed
     bus.emit(Events.FS_MUTATED, { workspaceId: memfs.workspace.id, source: 'commit' });
-    console.log(`[DiffService] Transaction ${txId} committed. New version: ${newVersion.slice(0, 8)}…`);
+    console.log(
+      `[DiffService] Transaction ${txId} committed. New version: ${newVersion.slice(0, 8)}…`
+    );
   }
 
   /**

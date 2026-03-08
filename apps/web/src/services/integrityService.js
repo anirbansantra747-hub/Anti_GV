@@ -47,7 +47,7 @@ class IntegrityService {
     this._isRunning = true;
 
     try {
-      const storedVersion  = memfs.workspace.version;
+      const storedVersion = memfs.workspace.version;
       const computedVersion = await this._computeRootHash(memfs.workspace.root);
 
       if (storedVersion === 'initial-root-hash' && memfs.workspace.root.children.size === 0) {

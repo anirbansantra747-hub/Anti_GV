@@ -20,7 +20,7 @@ import {
   FsLockedError,
   FsInvalidPathError,
   FsPermissionError,
-  isFsError
+  isFsError,
 } from '../src/services/fsErrors.js';
 
 // ── ADR 1: Hash-as-Identity ───────────────────────────────────────────────────
@@ -35,7 +35,7 @@ test('ADR 1 — blobId is always SHA256(content)', async (t) => {
   t.equal(blobId, blobId2, 'Deduplication: same content → same blobId');
 
   // Write via memfs and verify internal node points to same blob
-  await memfs.writeFileSync('/test/hello.js', content);
+  await memfs.writeFile('/test/hello.js', content);
   const loc = memfs._traverse('/test/hello.js', false);
   const node = loc.parentNode.children.get(loc.nodeName);
   t.equal(node.blobId, blobId, 'FileNode.blobId matches deduplicated blobId');
@@ -48,7 +48,7 @@ test('ADR 2 — Shadow Tree does not mutate Tier 1 before commit', async (t) => 
   const original = 'const x = 1;';
   const proposed = 'const x = 99;';
 
-  await memfs.writeFileSync('/test/vars.js', original);
+  await memfs.writeFile('/test/vars.js', original);
 
   const txId = diffService.beginTransaction();
   await diffService.applyPatch(txId, {
@@ -57,7 +57,7 @@ test('ADR 2 — Shadow Tree does not mutate Tier 1 before commit', async (t) => 
   });
 
   // Tier 1 must be unchanged
-  const actualTier1 = await memfs.readFileSync('/test/vars.js', 'utf8');
+  const actualTier1 = await memfs.readFile('/test/vars.js', 'utf8');
   t.equal(actualTier1, original, 'Tier 1 content is unchanged after shadow patch');
 
   // Diff is available
@@ -72,15 +72,15 @@ test('ADR 2 — Shadow Tree does not mutate Tier 1 before commit', async (t) => 
 test('ADR 3 — Merkle hash changes when any file changes', async (t) => {
   t.plan(2);
 
-  await memfs.writeFileSync('/project/a.js', 'version A');
+  await memfs.writeFile('/project/a.js', 'version A');
   const hash1 = await snapshotStore.computeDirHash(memfs.workspace.root);
 
-  await memfs.writeFileSync('/project/a.js', 'version B');
+  await memfs.writeFile('/project/a.js', 'version B');
   const hash2 = await snapshotStore.computeDirHash(memfs.workspace.root);
 
   t.notEqual(hash1, hash2, 'Root hash changes when file content changes');
 
-  await memfs.writeFileSync('/project/a.js', 'version A');
+  await memfs.writeFile('/project/a.js', 'version A');
   const hash3 = await snapshotStore.computeDirHash(memfs.workspace.root);
   t.equal(hash1, hash3, 'Root hash is deterministic: same content → same hash');
 });
@@ -89,17 +89,33 @@ test('ADR 3 — Merkle hash changes when any file changes', async (t) => {
 test('ADR 4 — fsGuard rejects path traversal and reserved names', (t) => {
   t.plan(4);
 
-  t.throws(() => guardWrite('/../etc/passwd', 'UI'),  FsInvalidPathError, 'Blocks ".." traversal');
-  t.throws(() => guardWrite('/node_modules/evil.js', 'UI'), FsInvalidPathError, 'Blocks reserved name node_modules');
-  t.throws(() => guardWrite('relative/path.js', 'UI'), FsInvalidPathError, 'Blocks relative paths (no leading /)');
+  t.throws(() => guardWrite('/../etc/passwd', 'UI'), FsInvalidPathError, 'Blocks ".." traversal');
+  t.throws(
+    () => guardWrite('/node_modules/evil.js', 'UI'),
+    FsInvalidPathError,
+    'Blocks reserved name node_modules'
+  );
+  t.throws(
+    () => guardWrite('relative/path.js', 'UI'),
+    FsInvalidPathError,
+    'Blocks relative paths (no leading /)'
+  );
   t.doesNotThrow(() => guardWrite('/src/safe.js', 'UI'), 'Allows clean absolute path');
 });
 
 test('ADR 4 — fsGuard rejects writes from read-only modules', (t) => {
   t.plan(2);
 
-  t.throws(() => guardWrite('/src/app.js', 'CODE_RUNNER'), FsPermissionError, 'CODE_RUNNER cannot write');
-  t.throws(() => guardWrite('/src/app.js', 'RAG_INDEXER'), FsPermissionError, 'RAG_INDEXER cannot write');
+  t.throws(
+    () => guardWrite('/src/app.js', 'CODE_RUNNER'),
+    FsPermissionError,
+    'CODE_RUNNER cannot write'
+  );
+  t.throws(
+    () => guardWrite('/src/app.js', 'RAG_INDEXER'),
+    FsPermissionError,
+    'RAG_INDEXER cannot write'
+  );
 });
 
 test('ADR 4 — fsGuard rejects writes when workspace is locked', (t) => {
@@ -108,7 +124,11 @@ test('ADR 4 — fsGuard rejects writes when workspace is locked', (t) => {
   const backup = memfs.workspace.locked;
   memfs.workspace.locked = true;
 
-  t.throws(() => guardWrite('/src/app.js', 'AI_AGENT'), FsLockedError, 'Write rejected when locked');
+  t.throws(
+    () => guardWrite('/src/app.js', 'AI_AGENT'),
+    FsLockedError,
+    'Write rejected when locked'
+  );
 
   memfs.workspace.locked = backup;
 });
@@ -147,7 +167,10 @@ test('ADR 7 — SnapshotGC evicts oldest snapshots when exceeding cap', (t) => {
   }
 
   t.equal(snapshotGC.size, 20, 'Snapshot count capped at 20');
-  t.notOk(snapshotGC.snapshots.find(s => s.id === 'snap-0'), 'Oldest snapshot evicted');
+  t.notOk(
+    snapshotGC.snapshots.find((s) => s.id === 'snap-0'),
+    'Oldest snapshot evicted'
+  );
 
   snapshotGC.clear();
 });
