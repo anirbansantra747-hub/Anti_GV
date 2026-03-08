@@ -59,7 +59,7 @@ class FileWatcher {
   // ── Internal ──────────────────────────────────────────────────────────────
 
   _scan(isInitial = false) {
-    const allPaths = memfs.readdirSync('/', { recursive: true });
+    const allPaths = memfs.readdir('/', { recursive: true });
     const currentPaths = new Set(allPaths);
     const events = [];
 
@@ -93,7 +93,9 @@ class FileWatcher {
       for (const [prefix, callbacks] of this._watchers) {
         if (event.path.startsWith(prefix)) {
           for (const cb of callbacks) {
-            try { cb(event); } catch (err) {
+            try {
+              cb(event);
+            } catch (err) {
               console.error(`[FileWatcher] Listener error for ${event.path}:`, err);
             }
           }

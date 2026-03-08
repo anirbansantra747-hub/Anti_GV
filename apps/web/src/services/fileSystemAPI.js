@@ -30,8 +30,8 @@ class FileSystemAPI {
    */
   async readFile(path, opts = {}) {
     guardRead(path);
-    if (!memfs.existsSync(path)) throw new FsNotFoundError(path);
-    return memfs.readFileSync(path, 'utf8');
+    if (!memfs.exists(path)) throw new FsNotFoundError(path);
+    return memfs.readFile(path, 'utf8');
   }
 
   /**
@@ -42,7 +42,7 @@ class FileSystemAPI {
    */
   existsFile(path, opts = {}) {
     guardRead(path);
-    return memfs.existsSync(path);
+    return memfs.exists(path);
   }
 
   /**
@@ -53,7 +53,7 @@ class FileSystemAPI {
    */
   listFiles(basePath = '/', opts = {}) {
     guardRead(basePath);
-    return memfs.readdirSync(basePath, { recursive: true });
+    return memfs.readdir(basePath, { recursive: true });
   }
 
   // ── WRITES ────────────────────────────────────────────────────────────────
@@ -67,7 +67,7 @@ class FileSystemAPI {
    */
   async writeFile(path, content, opts = {}) {
     guardWrite(path, opts.sourceModule ?? 'UI');
-    await memfs.writeFileSync(path, content);
+    await memfs.writeFile(path, content);
   }
 
   /**
@@ -77,7 +77,7 @@ class FileSystemAPI {
    */
   mkdir(dirPath, opts = {}) {
     guardWrite(dirPath, opts.sourceModule ?? 'UI');
-    memfs.mkdirSync(dirPath, { recursive: true });
+    memfs.mkdir(dirPath, { recursive: true });
   }
 
   /**
@@ -87,8 +87,20 @@ class FileSystemAPI {
    */
   deleteFile(path, opts = {}) {
     guardWrite(path, opts.sourceModule ?? 'UI');
-    if (!memfs.existsSync(path)) throw new FsNotFoundError(path);
-    memfs.unlinkSync(path);
+    if (!memfs.exists(path)) throw new FsNotFoundError(path);
+    memfs.unlink(path);
+  }
+
+  /**
+   * Rename or move a file/directory.
+   * @param {string} oldPath
+   * @param {string} newPath
+   * @param {CallOptions} [opts]
+   */
+  renameFile(oldPath, newPath, opts = {}) {
+    guardWrite(oldPath, opts.sourceModule ?? 'UI');
+    guardWrite(newPath, opts.sourceModule ?? 'UI');
+    memfs.rename(oldPath, newPath);
   }
 
   // ── AI SHADOW TREE (DIFF) ─────────────────────────────────────────────────
