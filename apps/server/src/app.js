@@ -3,6 +3,7 @@ import cors from 'cors';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import dotenv from 'dotenv';
+import { setupAgentSocket } from './sockets/agentSocket.js';
 
 dotenv.config();
 
@@ -40,8 +41,8 @@ io.on('connection', (socket) => {
     console.log(`[socket] disconnected: ${socket.id}`);
   });
 
-  // TODO: Mount socket handlers
-  // setupAgentSocket(io, socket);
+  // Mount socket handlers
+  setupAgentSocket(io, socket);
   // setupExecutionSocket(io, socket);
 });
 
