@@ -148,7 +148,22 @@ export default function AIPanel() {
                   )}
                 </div>
               ) : (
-                msg.content
+                <div style={{ position: 'relative' }}>
+                  <span style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</span>
+                  {msg.isStreaming && (
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        width: '8px',
+                        height: '14px',
+                        background: '#cbd5e1',
+                        marginLeft: '4px',
+                        verticalAlign: 'middle',
+                        animation: 'blink 1s step-end infinite',
+                      }}
+                    />
+                  )}
+                </div>
               )}
             </div>
           </div>
