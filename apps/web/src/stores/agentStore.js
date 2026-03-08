@@ -112,19 +112,71 @@ export const useAgentStore = create((set, get) => {
         }
       });
 
+      // Module 11: Token Streaming support
+      socket.on('agent:message:start', (payload) => {
+        set((state) => ({
+          messages: [
+            ...state.messages,
+            {
+              id: payload.messageId,
+              role: 'assistant',
+              type: 'text',
+              content: '',
+              isStreaming: true,
+            },
+          ],
+        }));
+      });
+
+      socket.on('agent:message:stream', (payload) => {
+        set((state) => ({
+          messages: state.messages.map((msg) =>
+            msg.id === payload.messageId ? { ...msg, content: msg.content + payload.chunk } : msg
+          ),
+        }));
+      });
+
       socket.on('agent:step:done', () => {
         set({ isThinking: false, thinkingMessage: '' });
       });
 
       socket.on('agent:done', (payload) => {
-        set((state) => ({
-          isThinking: false,
-          thinkingMessage: '',
-          messages: [
-            ...state.messages,
-            { id: Date.now(), role: 'assistant', type: 'text', content: payload.message },
-          ],
-        }));
+        set((state) => {
+          // If we have a messageId, we are concluding a streamed message
+          if (payload.messageId) {
+            return {
+              isThinking: false,
+              thinkingMessage: '',
+              messages: state.messages.map((msg) =>
+                msg.id === payload.messageId
+                  ? {
+                      ...msg,
+                      isStreaming: false,
+                      content: payload.message ? msg.content + payload.message : msg.content,
+                    }
+                  : msg
+              ),
+            };
+          }
+
+          // Legacy / fallback: just append a new text message if there is content
+          if (payload.message) {
+            return {
+              isThinking: false,
+              thinkingMessage: '',
+              messages: [
+                ...state.messages,
+                { id: Date.now(), role: 'assistant', type: 'text', content: payload.message },
+              ],
+            };
+          }
+
+          // Otherwise just clear thinking state
+          return {
+            isThinking: false,
+            thinkingMessage: '',
+          };
+        });
       });
 
       socket.on('agent:error', (payload) => {
@@ -204,7 +256,36 @@ export const useAgentStore = create((set, get) => {
 
       try {
         const { diffService } = await import('../services/diffService');
+
+        // Grab the transaction to know exactly which paths were touched before it gets deleted on commit
+        const tx = diffService.getTransaction(txId);
+        const patchedPaths = tx ? [...tx.patchedPaths] : [];
+
         await diffService.commit(txId);
+
+        // After committing to memfs (Tier 1), sync those changes to the real backend filesystem
+        if (socket && patchedPaths.length > 0) {
+          const { memfs } = await import('../services/memfsService');
+
+          for (const path of patchedPaths) {
+            try {
+              // Read the new source of truth directly from memfs
+              const content = await memfs.readFile(path);
+
+              // Emit write to backend sync
+              socket.emit('fs:write', { path, content }, (response) => {
+                if (!response.success) {
+                  console.error(`Failed to sync ${path} to disk:`, response.error);
+                } else {
+                  console.log(`Successfully synced ${path} to real disk.`);
+                }
+              });
+            } catch (fsErr) {
+              console.error(`Error reading ${path} from memfs to sync to disk:`, fsErr);
+            }
+          }
+        }
+
         set((state) => ({
           activeTransactionId: null,
           messages: [
