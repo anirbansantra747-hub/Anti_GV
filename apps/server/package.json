@@ -14,12 +14,16 @@
   "dependencies": {
     "@antigv/ai-core": "workspace:*",
     "@antigv/shared": "workspace:*",
+    "acorn": "^8.16.0",
+    "acorn-walk": "^8.3.5",
+    "chromadb": "^3.3.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.0",
     "express": "^4.21.0",
     "groq-sdk": "^0.8.0",
     "jsonwebtoken": "^9.0.0",
     "mongoose": "^8.0.0",
+    "node-pty": "^1.1.0",
     "socket.io": "^4.7.0",
     "zod": "^3.23.0"
   },

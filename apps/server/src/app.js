@@ -4,6 +4,8 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import dotenv from 'dotenv';
 import { setupAgentSocket } from './sockets/agentSocket.js';
+import { setupFsSocket } from './sockets/fsSocket.js';
+import { setupTerminalSocket } from './sockets/terminalSocket.js';
 
 dotenv.config();
 
@@ -25,13 +27,9 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// TODO: Mount routes
-// import agentRoutes from './routes/agentRoutes.js';
-// import executionRoutes from './routes/executionRoutes.js';
-// import workspaceRoutes from './routes/workspaceRoutes.js';
-// app.use('/api/agent', agentRoutes);
-// app.use('/api/execute', executionRoutes);
-// app.use('/api/workspaces', workspaceRoutes);
+// Routes
+import ragRoutes from './routes/rag.js';
+app.use('/api/rag', ragRoutes);
 
 // Socket.io
 io.on('connection', (socket) => {
@@ -43,7 +41,8 @@ io.on('connection', (socket) => {
 
   // Mount socket handlers
   setupAgentSocket(io, socket);
-  // setupExecutionSocket(io, socket);
+  setupFsSocket(io, socket);
+  setupTerminalSocket(io, socket);
 });
 
 // Start

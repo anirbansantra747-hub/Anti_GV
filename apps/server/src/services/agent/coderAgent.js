@@ -3,6 +3,8 @@ import { editJsonSchemaInstructions } from './schemas/editSchema.js';
 import { runCritic } from './criticAgent.js';
 import { runFixer } from './fixerAgent.js';
 
+import { readFile, exists } from '../fs/fileService.js';
+
 const CODER_SYSTEM_PROMPT = `
 You are an expert Software Engineer Coder Agent.
 You are given a codebase context, a user prompt, and a specific EXECUTION PLAN STEP to implement.
@@ -40,6 +42,16 @@ export const generateCodeEdits = async (plan, fullContext, socket) => {
       description: `${step.action} ${step.filePath}`,
     });
 
+    // Module 10: Fetch exact REAL file contents from disk before coding
+    let actualFileContent = 'File not found or is new.';
+    try {
+      if (step.filePath && (await exists(step.filePath))) {
+        actualFileContent = await readFile(step.filePath);
+      }
+    } catch (e) {
+      console.warn(`[CoderAgent] Could not read ${step.filePath} from disk:`, e.message);
+    }
+
     const stepPrompt = `
 CONTEXT:
 ${fullContext}
@@ -49,6 +61,11 @@ CURRENT STEP TO IMPLEMENT:
 Action: ${step.action}
 File: ${step.filePath}
 Description: ${step.description}
+
+EXACT CURRENT FILE CONTENT (From Disk):
+\`\`\`
+${actualFileContent}
+\`\`\`
 
 Generate the JSON edit response for this step.
 `;
