@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file LargeFileView.jsx
  * @description Per V3 ADR #5: files flagged as binary=true bypass Monaco and show this view.

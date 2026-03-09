@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file WorkspaceContracts.js
  * @description Core structural contracts and explicit state formats for the V3 Workspace Architecture.

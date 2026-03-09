@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file localFileService.js
  * @description Handles importing files and folders from the local OS filesystem

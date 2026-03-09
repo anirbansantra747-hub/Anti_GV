@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file fsSubscriptions.js
  * @description Read-only event subscription API for external modules.

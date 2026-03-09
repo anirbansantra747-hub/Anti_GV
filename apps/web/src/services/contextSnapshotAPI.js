@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file contextSnapshotAPI.js
  * @description Token-budget-aware context snapshot API for the AI Agent module.
@@ -51,12 +52,8 @@ class ContextSnapshotAPI {
 
     // 1. File tree (lightweight, always included if requested)
     if (includeTree) {
-<<<<<<< Updated upstream
       const allPaths = memfs
         .readdir('/', { recursive: true })
-=======
-      const allPaths = memfs.readdir('/', { recursive: true })
->>>>>>> Stashed changes
         .filter((p) => !p.includes('node_modules'));
       const treeSection = `## File Tree\n\`\`\`\n${allPaths.join('\n')}\n\`\`\``;
       sections.push(treeSection);
@@ -114,12 +111,8 @@ class ContextSnapshotAPI {
    * @returns {string}
    */
   getFileTree() {
-<<<<<<< Updated upstream
     return memfs
       .readdir('/', { recursive: true })
-=======
-    return memfs.readdir('/', { recursive: true })
->>>>>>> Stashed changes
       .filter((p) => !p.includes('node_modules'))
       .join('\n');
   }

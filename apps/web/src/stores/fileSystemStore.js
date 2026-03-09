@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file fileSystemStore.js
  * @description React/Zustand reactive view of the Tier 1 In-Memory Map.

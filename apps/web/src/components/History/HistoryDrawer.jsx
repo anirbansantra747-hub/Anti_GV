@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file HistoryDrawer.jsx
  * @description Phase 5 — Snapshot History Panel.

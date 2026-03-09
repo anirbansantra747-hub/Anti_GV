@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file persistenceService.js
  * @description Tier 2 persistence layer: debounced flat serialization of the

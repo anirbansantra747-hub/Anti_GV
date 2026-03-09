@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file QuickOpen.jsx
  * @description Ctrl+P command palette — fuzzy-match file search across the workspace.

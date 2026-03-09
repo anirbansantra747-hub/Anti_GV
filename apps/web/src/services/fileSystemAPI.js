@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file fileSystemAPI.js
  * @description THE only public entry-point for all external modules to interact with the File System.

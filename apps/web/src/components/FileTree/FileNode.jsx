@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file FileNode.jsx
  * @description Single file/folder row rendered inside react-arborist.

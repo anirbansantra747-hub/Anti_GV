@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file DiffViewer.jsx
  * @description Monaco DiffEditor wrapper for reviewing AI-proposed Shadow Tree patches.

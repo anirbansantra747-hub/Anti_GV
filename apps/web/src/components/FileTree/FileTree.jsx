@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file FileTree.jsx
  * @description File explorer panel built on react-arborist.
