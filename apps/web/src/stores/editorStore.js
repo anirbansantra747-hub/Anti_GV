@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file editorStore.js
  * @description Zustand store for Monaco Editor state.

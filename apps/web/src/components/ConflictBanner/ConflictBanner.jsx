@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file ConflictBanner.jsx
  * @description Phase 7 — Workspace state notification banners.

@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file snapshotGC.js
  * @description Snapshot Garbage Collector — enforces the max-20 ephemeral snapshot

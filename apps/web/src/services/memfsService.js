@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file memfsService.js
  * @description The absolute source of truth for the active Workspace.

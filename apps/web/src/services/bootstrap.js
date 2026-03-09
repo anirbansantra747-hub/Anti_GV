@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file bootstrap.js
  * @description Application startup sequence for the V3 Workspace Runtime.

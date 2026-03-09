@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file AIPanel.jsx
  * @description Sleek, modern AI chat interface with glassmorphism chat bubbles.

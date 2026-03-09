@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file fsGuard.js
  * @description The FS Authority Enforcement Layer (V3 ADR).

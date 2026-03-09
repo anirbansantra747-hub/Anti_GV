@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file MonacoEditor.jsx
  * @description Monaco Editor wrapper wired to the fileSystemAPI and editorStore.

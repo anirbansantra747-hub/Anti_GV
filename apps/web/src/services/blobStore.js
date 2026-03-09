@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file blobStore.js
  * @description In-memory Content Deduplication store for the File System.

@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file eventBus.js
  * @description Lightweight unidirectional internal Pub/Sub event bus.

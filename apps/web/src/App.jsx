@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import FileTree from './components/FileTree/FileTree';
 import MonacoEditor from './components/Editor/MonacoEditor';

@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file tabSyncService.js
  * @description Multi-tab Master/Slave coordination using Web Locks + BroadcastChannel.

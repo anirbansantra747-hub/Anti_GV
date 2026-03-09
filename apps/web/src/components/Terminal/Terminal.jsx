@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file Terminal.jsx
  * @description Terminal panel stub — shows a placeholder until the code runner is implemented.

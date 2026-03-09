@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file diffService.js
  * @description The V3 Shadow Tree DiffService.

@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file FileTreeActions.jsx
  * @description Toolbar above the FileTree.

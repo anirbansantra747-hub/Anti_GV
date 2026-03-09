@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file StatusBar.jsx
  * @description VS Code-style bottom status bar for Anti_GV IDE.

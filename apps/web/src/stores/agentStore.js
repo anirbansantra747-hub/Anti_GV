@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 import { create } from 'zustand';
 import { io } from 'socket.io-client';
 import { contextService } from '../services/contextService.js'; // Teammate's context gatherer
