@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { io } from 'socket.io-client';
-import { contextService } from '../services/contextService'; // Teammate's context gatherer
+import { contextService } from '../services/contextService.js'; // Teammate's context gatherer
 
 const SOCKET_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
