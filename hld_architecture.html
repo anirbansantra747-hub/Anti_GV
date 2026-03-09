@@ -633,7 +633,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);overflow-x:h
           <div class="stt-line"><div class="stt-dot" style="border-color:var(--blue)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
           <div class="stt-content">
             <div class="stt-title" style="color:var(--text)">memfs creates the file</div>
-            <div class="stt-detail">memfs.writeFileSync('/project/src/Main.java', ''). File tree re-renders immediately. Zero server call.</div>
+            <div class="stt-detail">memfs.writeFile('/project/src/Main.java', ''). File tree re-renders immediately. Zero server call.</div>
             <div class="stt-chips"><span class="stt-chip chip-b">memfs</span><span class="stt-chip chip-y">react-arborist</span></div>
           </div>
         </div>
@@ -716,7 +716,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);overflow-x:h
       <div class="arr">→<div class="alabel">stores in</div></div>
       <div class="fnode big green">MongoDB Atlas</div>
     </div>
-    <div class="callout warn" style="margin-top:20px"><span class="ci">⚠️</span><span><strong>Delete file flow:</strong> memfs.unlinkSync → re-render tree → localForage sync → PATCH MongoDB workspace with updated files array. Delete is permanent after MongoDB sync. Before that, user can undo with Ctrl+Z (undoes memfs change only).</span></div>
+    <div class="callout warn" style="margin-top:20px"><span class="ci">⚠️</span><span><strong>Delete file flow:</strong> memfs.unlink → re-render tree → localForage sync → PATCH MongoDB workspace with updated files array. Delete is permanent after MongoDB sync. Before that, user can undo with Ctrl+Z (undoes memfs change only).</span></div>
   </div>
 
 </div>
@@ -789,8 +789,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);overflow-x:h
           <div class="stt-line"><div class="stt-dot" style="border-color:var(--yellow)"></div><div class="stt-vline" style="background:var(--border2)"></div></div>
           <div class="stt-content">
             <div class="stt-title" style="color:var(--text)">Content read from memfs</div>
-            <div class="stt-detail">memfs.readFileSync(path, 'utf8'). Returns file content string. If file doesn't exist in memfs → read from IndexedDB first.</div>
-            <div class="stt-chips"><span class="stt-chip chip-b">memfs.readFileSync</span></div>
+            <div class="stt-detail">memfs.readFile(path, 'utf8'). Returns file content string. If file doesn't exist in memfs → read from IndexedDB first.</div>
+            <div class="stt-chips"><span class="stt-chip chip-b">memfs.readFile</span></div>
           </div>
         </div>
         <div class="stt">
@@ -1040,7 +1040,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);overflow-x:h
         <div class="stt-content">
           <div class="stt-title" style="color:var(--text)">Client builds context object</div>
           <div class="stt-detail">Reads active file from memfs. Reads open tabs from memfs. Gets file tree listing. Estimates total tokens. Trims if over 6,000 tokens (shortest files cut first).</div>
-          <div class="stt-code">const ctx = {<br>&nbsp;&nbsp;activeFile: memfs.readFileSync(activePath, 'utf8'),<br>&nbsp;&nbsp;openFiles: openTabs.map(p => trim200(memfs.readFileSync(p))),<br>&nbsp;&nbsp;tree: memfs.listAll(), selection: editor.getSelection()<br>}</div>
+          <div class="stt-code">const ctx = {<br>&nbsp;&nbsp;activeFile: memfs.readFile(activePath, 'utf8'),<br>&nbsp;&nbsp;openFiles: openTabs.map(p => trim200(memfs.readFile(p))),<br>&nbsp;&nbsp;tree: memfs.listAll(), selection: editor.getSelection()<br>}</div>
         </div>
       </div>
       <div class="stt">
@@ -1083,7 +1083,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);overflow-x:h
         <div class="stt-line"><div class="stt-dot" style="border-color:var(--green)"></div></div>
         <div class="stt-content">
           <div class="stt-title" style="color:var(--text)">Accept → write to memfs → autosave triggers</div>
-          <div class="stt-detail">memfs.writeFileSync(patch.filePath, patch.newContent). Monaco model updates live. Dirty dot appears. Undo (Ctrl+Z) fully supported — Monaco tracks this in history. 3-second autosave to IndexedDB kicks in.</div>
+          <div class="stt-detail">memfs.writeFile(patch.filePath, patch.newContent). Monaco model updates live. Dirty dot appears. Undo (Ctrl+Z) fully supported — Monaco tracks this in history. 3-second autosave to IndexedDB kicks in.</div>
         </div>
       </div>
     </div>

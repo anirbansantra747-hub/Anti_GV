@@ -5,8 +5,7 @@
  * Acts as the bridge between the FileSystem and the AI module.
  */
 
-import { memfs } from './memfsService.js';
-import { blobStore } from './blobStore.js';
+import { fileSystemAPI } from './fileSystemAPI.js';
 
 /** Max characters per file to include in context (protect token budget) */
 const MAX_CHARS_PER_FILE = 12_000;
@@ -29,12 +28,12 @@ class ContextService {
     const includedFiles = [];
 
     // 1. File Tree (light structural context)
-    const allPaths = memfs.readdir('/', { recursive: true });
+    const allPaths = fileSystemAPI.listFiles('/');
     const fileTree = allPaths.filter((p) => !p.includes('node_modules'));
     sections.push(`## File Tree\n\`\`\`\n${fileTree.join('\n')}\n\`\`\``);
 
     // 2. Active File (highest priority — always include)
-    if (activeFile && memfs.exists(activeFile)) {
+    if (activeFile && fileSystemAPI.existsFile(activeFile)) {
       const content = await this._readSafe(activeFile);
       sections.push(`## Active File: ${activeFile}\n\`\`\`\n${content}\n\`\`\``);
       includedFiles.push(activeFile);
@@ -42,7 +41,7 @@ class ContextService {
 
     // 3. Other open tabs (excluding the active file)
     const otherTabs = openTabs
-      .filter((p) => p !== activeFile && memfs.exists(p))
+      .filter((p) => p !== activeFile && fileSystemAPI.existsFile(p))
       .slice(0, MAX_CONTEXT_FILES - includedFiles.length);
 
     for (const tab of otherTabs) {
@@ -65,7 +64,7 @@ class ContextService {
   async resolveFiles(paths) {
     const result = {};
     for (const path of paths) {
-      if (memfs.exists(path)) {
+      if (fileSystemAPI.existsFile(path)) {
         result[path] = await this._readSafe(path);
       }
     }
@@ -79,7 +78,7 @@ class ContextService {
    */
   async _readSafe(path) {
     try {
-      const content = await memfs.readFile(path, 'utf8');
+      const content = await fileSystemAPI.readFile(path);
       if (typeof content !== 'string') return `[Binary file — ${path}]`;
       if (content.length > MAX_CHARS_PER_FILE) {
         return (

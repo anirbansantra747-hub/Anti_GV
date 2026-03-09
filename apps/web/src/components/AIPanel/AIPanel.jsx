@@ -1,18 +1,17 @@
+/**
+ * @file AIPanel.jsx
+ * @description Sleek, modern AI chat interface with glassmorphism chat bubbles.
+ */
+
 import React, { useEffect, useState, useRef } from 'react';
+import { Send, Cpu, Check, X, Orbit } from 'lucide-react';
 import { useAgentStore } from '../../stores/agentStore';
 
 export default function AIPanel() {
   const {
-    connect,
-    disconnect,
-    isConnected,
-    messages,
-    isThinking,
-    thinkingMessage,
-    sendPrompt,
-    activeTransactionId,
-    approveTransaction,
-    rejectTransaction,
+    connect, disconnect, isConnected, messages,
+    isThinking, thinkingMessage, sendPrompt,
+    activeTransactionId, approveTransaction, rejectTransaction,
   } = useAgentStore();
 
   const [inputMsg, setInputMsg] = useState('');
@@ -29,120 +28,98 @@ export default function AIPanel() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (inputMsg.trim()) {
+    if (inputMsg.trim() && !isThinking) {
       sendPrompt(inputMsg);
       setInputMsg('');
     }
   };
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-        background: '#0f172a',
-        borderLeft: '1px solid #1e293b',
-      }}
-    >
-      <div
-        style={{
-          padding: '16px',
-          borderBottom: '1px solid #1e293b',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}
-      >
-        <h2 style={{ fontSize: '1rem', fontWeight: 600, margin: 0, color: '#f8fafc' }}>AI Agent</h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <div
-            style={{
-              width: '8px',
-              height: '8px',
-              borderRadius: '50%',
-              background: isConnected ? '#10b981' : '#ef4444',
-            }}
-          />
-          <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-            {isConnected ? 'Connected' : 'Offline'}
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'transparent' }}>
+      
+      {/* Header */}
+      <div style={{
+        padding: '14px 20px',
+        borderBottom: '1px solid var(--panel-border)',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        background: 'rgba(255,255,255,0.02)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Cpu size={18} color="var(--accent)" strokeWidth={2} />
+          <h2 style={{ fontSize: 14, fontWeight: 700, margin: 0, color: 'var(--text-primary)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+            AI Agent
+          </h2>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{
+            width: 8, height: 8, borderRadius: '50%',
+            background: isConnected ? '#10b981' : '#ef4444',
+            boxShadow: `0 0 8px ${isConnected ? '#10b981' : '#ef4444'}`
+          }} />
+          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>
+            {isConnected ? 'ONLINE' : 'OFFLINE'}
           </span>
         </div>
       </div>
 
-      <div
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-          padding: '16px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '16px',
-        }}
-      >
+      {/* Messages Area */}
+      <div style={{
+        flex: 1, overflowY: 'auto', padding: '20px',
+        display: 'flex', flexDirection: 'column', gap: '20px',
+      }}>
         {messages.length === 0 && (
-          <div
-            style={{
-              color: '#64748b',
-              textAlign: 'center',
-              marginTop: '32px',
-              fontSize: '0.875rem',
-            }}
-          >
-            Hello! I'm Anti_GV. Ask me to build something or refactor your code.
+          <div className="animate-in" style={{
+            margin: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
+            opacity: 0.6
+          }}>
+            <div style={{ width: 48, height: 48, borderRadius: 16, background: 'var(--panel-border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Orbit size={24} color="var(--accent)" />
+            </div>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 13, margin: 0, textAlign: 'center', maxWidth: 220, lineHeight: 1.5 }}>
+              Hello! I'm Anti_GV. Ask me to build something or refactor your code.
+            </p>
           </div>
         )}
 
         {messages.map((msg) => (
-          <div
-            key={msg.id}
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start',
-            }}
-          >
-            <div
-              style={{
-                background: msg.role === 'user' ? '#3b82f6' : '#1e293b',
-                color: msg.type === 'error' ? '#fca5a5' : '#f8fafc',
-                padding: '12px 16px',
-                borderRadius: '8px',
-                maxWidth: '85%',
-                wordBreak: 'break-word',
-                fontSize: '0.875rem',
-                lineHeight: 1.5,
-                border: msg.type === 'error' ? '1px solid #7f1d1d' : 'none',
-              }}
-            >
+          <div key={msg.id} className="animate-in" style={{
+            display: 'flex', flexDirection: 'column',
+            alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start',
+          }}>
+            <div style={{
+              background: msg.role === 'user' ? 'var(--accent)' : 'rgba(255,255,255,0.04)',
+              color: msg.role === 'user' ? '#030712' : 'var(--text-primary)',
+              padding: '12px 16px',
+              borderRadius: msg.role === 'user' ? '16px 16px 4px 16px' : '4px 16px 16px 16px',
+              maxWidth: '90%',
+              wordBreak: 'break-word',
+              fontSize: 13.5,
+              lineHeight: 1.6,
+              border: msg.role === 'user' ? 'none' : '1px solid var(--panel-border)',
+              boxShadow: msg.role === 'user' ? '0 4px 12px var(--accent-glow)' : 'none',
+              ...(msg.type === 'error' && { color: '#f87171', border: '1px solid #ef444444', background: '#ef444411' })
+            }}>
               {msg.type === 'plan' ? (
                 <div>
-                  <strong>Proposed Plan:</strong>
+                  <strong style={{ opacity: 0.8, fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Proposed Plan</strong>
                   <p style={{ margin: '8px 0' }}>{msg.data.summary}</p>
-                  <ul style={{ paddingLeft: '20px', margin: 0 }}>
+                  <ul style={{ paddingLeft: 20, margin: 0, color: 'var(--text-secondary)' }}>
                     {msg.data.steps.map((s) => (
-                      <li key={s.stepId}>
-                        {s.action} {s.filePath}
+                      <li key={s.stepId} style={{ marginBottom: 4 }}>
+                        <span style={{ color: 'var(--accent)' }}>{s.action}</span> <code style={{ background: '#00000044', padding: '2px 4px', borderRadius: 4 }}>{s.filePath}</code>
                       </li>
                     ))}
                   </ul>
-                  {/* Future: Add Approve button here */}
                 </div>
               ) : msg.type === 'code' ? (
                 <div>
-                  <div style={{ marginBottom: '8px', color: '#60a5fa' }}>{msg.content}</div>
+                  <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 12.5, whiteSpace: 'pre-wrap' }}>{msg.content}</div>
                   {msg.criticFeedback && (
-                    <div
-                      style={{
-                        marginTop: '8px',
-                        paddingTop: '8px',
-                        borderTop: '1px solid #334155',
-                        fontSize: '0.75rem',
-                        color: msg.criticFeedback.includes('Approved') ? '#10b981' : '#fbbf24',
-                      }}
-                    >
-                      <strong style={{ opacity: 0.8 }}>Semantic Verifier:</strong>
-                      <br />
+                    <div style={{
+                      marginTop: 12, paddingTop: 12, borderTop: '1px dashed var(--panel-border)',
+                      fontSize: 11, color: msg.criticFeedback.includes('Approved') ? '#4ade80' : '#fbbf24',
+                    }}>
+                      <strong style={{ opacity: 0.7 }}>Semantic Verifier:</strong><br />
                       {msg.criticFeedback}
                     </div>
                   )}
@@ -155,109 +132,86 @@ export default function AIPanel() {
         ))}
 
         {isThinking && (
-          <div
-            style={{
-              alignSelf: 'flex-start',
-              background: 'transparent',
-              color: '#cbd5e1',
-              fontSize: '0.875rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-            }}
-          >
-            <span className="spinner" style={{ animation: 'spin 1s linear infinite' }}>
-              ⟳
-            </span>
+          <div className="animate-in" style={{
+            alignSelf: 'flex-start', color: 'var(--text-secondary)', fontSize: 12,
+            display: 'flex', alignItems: 'center', gap: 8,
+            background: 'rgba(255,255,255,0.02)', padding: '8px 14px', borderRadius: 20,
+            border: '1px solid var(--panel-border)'
+          }}>
+            <Orbit size={14} color="var(--accent)" style={{ animation: 'spin 2s linear infinite' }} />
             {thinkingMessage || 'Thinking...'}
           </div>
         )}
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Transaction Approval Banner */}
       {activeTransactionId && (
-        <div
-          style={{
-            padding: '12px 16px',
-            background: '#1e293b',
-            borderTop: '1px solid #334155',
-            display: 'flex',
-            gap: '8px',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <span style={{ fontSize: '0.875rem', color: '#cbd5e1' }}>
-            <strong>Pending Edits</strong> (Ref: {activeTransactionId.substring(0, 6)})
+        <div className="animate-in" style={{
+          margin: '0 20px', padding: '12px 14px',
+          background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)',
+          borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 10,
+        }}>
+          <span style={{ fontSize: 12, color: '#93c5fd' }}>
+            <strong style={{ color: '#bfdbfe' }}>Pending Edits</strong> (Ref: {activeTransactionId.substring(0, 6)})
           </span>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              onClick={rejectTransaction}
-              style={{
-                background: 'transparent',
-                color: '#f8fafc',
-                border: '1px solid #475569',
-                padding: '6px 12px',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '0.875rem',
-              }}
-            >
-              Discard
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={approveTransaction} style={{
+              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              background: '#3b82f6', color: '#fff', border: 'none',
+              padding: '8px', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600,
+              boxShadow: '0 4px 12px rgba(59,130,246,0.3)', transition: 'background 0.2s'
+            }} onMouseEnter={e => e.currentTarget.style.background = '#2563eb'}
+               onMouseLeave={e => e.currentTarget.style.background = '#3b82f6'}>
+              <Check size={14} strokeWidth={3} /> Approve
             </button>
-            <button
-              onClick={approveTransaction}
-              style={{
-                background: '#10b981',
-                color: '#fff',
-                border: 'none',
-                padding: '6px 12px',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '0.875rem',
-                fontWeight: 600,
-              }}
-            >
-              Approve
+            <button onClick={rejectTransaction} style={{
+              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              background: 'rgba(255,255,255,0.05)', color: '#cbd5e1', border: '1px solid var(--panel-border)',
+              padding: '8px', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 500,
+              transition: 'background 0.2s'
+            }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+               onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}>
+              <X size={14} strokeWidth={2} /> Discard
             </button>
           </div>
         </div>
       )}
 
-      <div style={{ padding: '16px', borderTop: '1px solid #1e293b' }}>
-        <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '8px' }}>
+      {/* Input Area */}
+      <div style={{ padding: '20px', borderTop: '1px solid var(--panel-border)', background: 'rgba(255,255,255,0.01)' }}>
+        <form onSubmit={handleSubmit} style={{
+          display: 'flex', gap: 10, background: 'rgba(0,0,0,0.3)',
+          border: '1px solid var(--panel-border)', borderRadius: 12,
+          padding: 8, transition: 'border-color 0.2s',
+        }} onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+           onBlur={e => e.currentTarget.style.borderColor = 'var(--panel-border)'}
+        >
           <input
             type="text"
             value={inputMsg}
             onChange={(e) => setInputMsg(e.target.value)}
             disabled={isThinking || !isConnected}
-            placeholder={isConnected ? 'Describe what you want...' : 'Connecting...'}
+            placeholder={isConnected ? 'Message Anti_GV...' : 'Connecting...'}
             style={{
-              flex: 1,
-              background: '#1e293b',
-              border: '1px solid #334155',
-              borderRadius: '6px',
-              padding: '10px 14px',
-              color: '#f8fafc',
-              outline: 'none',
-              fontSize: '0.875rem',
+              flex: 1, background: 'transparent', border: 'none', color: 'var(--text-primary)',
+              padding: '0 8px', outline: 'none', fontSize: 14,
             }}
           />
           <button
             type="submit"
             disabled={isThinking || !inputMsg.trim() || !isConnected}
             style={{
-              background: '#3b82f6',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '6px',
-              padding: '0 16px',
-              fontWeight: 600,
+              background: isThinking || !inputMsg.trim() || !isConnected ? 'rgba(255,255,255,0.05)' : 'var(--accent)',
+              color: isThinking || !inputMsg.trim() || !isConnected ? 'var(--text-muted)' : '#030712',
+              border: 'none', borderRadius: 8, width: 32, height: 32,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
               cursor: isThinking || !inputMsg.trim() || !isConnected ? 'not-allowed' : 'pointer',
-              opacity: isThinking || !inputMsg.trim() || !isConnected ? 0.5 : 1,
+              transition: 'all 0.2s',
+              boxShadow: (!isThinking && inputMsg.trim() && isConnected) ? '0 4px 12px var(--accent-glow)' : 'none'
             }}
           >
-            Send
+            <Send size={15} strokeWidth={2.5} style={{ transform: 'translateX(1px)' }} />
           </button>
         </form>
       </div>
