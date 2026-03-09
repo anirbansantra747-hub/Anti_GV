@@ -195,3 +195,4 @@ class EventBus {
 
 // Export a singleton — everyone imports the same bus instance.
 export const bus = new EventBus();
+

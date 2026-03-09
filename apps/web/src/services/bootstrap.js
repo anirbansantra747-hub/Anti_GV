@@ -17,6 +17,12 @@ import { integrityService } from './integrityService.js';
 import { fileWatcher } from './fileWatcher.js';
 import { bus, Events } from './eventBus.js';
 import { isFsError } from './fsErrors.js';
+// ⚠️ CRITICAL: import as a side-effect to activate the FS_MUTATED → IDB debounced auto-save subscription.
+// Without this, files written to memfs are NEVER persisted to IndexedDB.
+import './persistenceService.js';
+// Activate the formal V3 workspace state machine (IDLE → AI_PENDING → DIFF_REVIEW → COMMITTING).
+// Self-wires via eventBus — no further setup needed.
+import './workspaceMachine.js';
 
 /**
  * @returns {Promise<{
