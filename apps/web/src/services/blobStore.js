@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file blobStore.js
  * @description In-memory Content Deduplication store for the File System.
@@ -151,3 +152,4 @@ class BlobStore {
 
 // Export a singleton instance.
 export const blobStore = new BlobStore();
+

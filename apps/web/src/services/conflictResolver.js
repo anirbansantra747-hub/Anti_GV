@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file conflictResolver.js
  * @description Handles the CONFLICT workspace state when remote.version !== local.version.

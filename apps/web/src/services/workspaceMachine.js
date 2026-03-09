@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file workspaceMachine.js
  * @description Formal Closed State Machine for the V3 Workspace Runtime.

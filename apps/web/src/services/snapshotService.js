@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file snapshotService.js
  * @description Generates Merkle-hashes for immutable workspace versions.

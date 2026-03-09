@@ -95,24 +95,27 @@ Layer 3: MongoDB Atlas (cloud)  ← Source of truth. Cross-device sync.
 // Implement them exactly so integration is seamless.
 
 // 1. Read a file by path
-memfs.readFileSync(path, 'utf8') → string
+memfs.readFile(path, 'utf8') → Promise<string>
 
 // 2. Write content to a file
-memfs.writeFileSync(path, content)
+memfs.writeFile(path, content)
 
 // 3. Create a directory (recursive)
-memfs.mkdirSync(dirPath, { recursive: true })
+memfs.mkdir(dirPath, { recursive: true })
 
 // 4. List all files recursively (for file tree context)
-memfs.readdirSync('/', { recursive: true }) → string[]
+memfs.readdir('/', { recursive: true }) → string[]
 
 // 5. Check if file/dir exists
-memfs.existsSync(path) → boolean
+memfs.exists(path) → boolean
 
 // 6. Delete a file
-memfs.unlinkSync(path)
+memfs.unlink(path)
 
-// 7. Zustand store shape (AI agent reads from this)
+// 7. Rename / move a file or directory
+memfs.rename(oldPath, newPath)
+
+// 8. Zustand store shape (AI agent reads from this)
 useEditorStore = {
   activeFile: string,           // currently focused file path
   openTabs: string[],           // all open tabs as file paths

@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file fileSystemAPI.js
  * @description THE only public entry-point for all external modules to interact with the File System.
@@ -14,6 +15,8 @@ import { memfs } from './memfsService.js';
 import { diffService } from './diffService.js';
 import { guardRead, guardWrite, guardDiff } from './fsGuard.js';
 import { FsNotFoundError } from './fsErrors.js';
+import { snapshotStore } from './snapshotService.js';
+import { recordSnapshot } from '../components/History/HistoryDrawer.jsx';
 
 /**
  * @typedef {{ sourceModule?: string }} CallOptions
@@ -68,6 +71,16 @@ class FileSystemAPI {
   async writeFile(path, content, opts = {}) {
     guardWrite(path, opts.sourceModule ?? 'UI');
     await memfs.writeFile(path, content);
+
+    // Phase 5.1: recompute Merkle rootTreeHash after each write (O(depth))
+    try {
+      const newHash = await snapshotStore.computeDirHash(memfs.workspace.root);
+      memfs.workspace.version = newHash;
+      const fileCount = memfs.readdir('/', { recursive: true }).length;
+      recordSnapshot(newHash, fileCount, opts.label || `Wrote ${path.split('/').pop()}`);
+    } catch {
+      // Non-fatal — hash failure doesn’t block the write
+    }
   }
 
   /**
