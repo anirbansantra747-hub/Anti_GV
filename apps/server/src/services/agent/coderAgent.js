@@ -1,4 +1,4 @@
-import { generateGroqResponse } from '../llm/groqClient.js';
+import { generateResponse as generateGroqResponse } from '../llm/llmRouter.js';
 import { editJsonSchemaInstructions } from './schemas/editSchema.js';
 import { runCritic } from './criticAgent.js';
 import { runFixer } from './fixerAgent.js';
@@ -115,7 +115,7 @@ Generate the JSON edit response for this step.
         // Needs fixing
         retryCount++;
         socket.emit('agent:thinking', {
-          message: `Fixing step ${step.stepId} (Retry ${retryCount}/${MAX_RETRIES}): ${feedback.substring(0, 40)}...`,
+          message: `Fixing step ${step.stepId} (Retry ${retryCount}/${MAX_RETRIES}): ${String(feedback).substring(0, 40)}...`,
         });
 
         try {
@@ -141,7 +141,7 @@ Generate the JSON edit response for this step.
         stepId: `code_${step.stepId}`,
         chunk: JSON.stringify(editResult, null, 2),
         provider: 'groq',
-        criticFeedback: feedback || 'Approved on first pass.',
+        criticFeedback: String(feedback) || 'Approved on first pass.',
         file: step.filePath,
       });
     } catch (error) {

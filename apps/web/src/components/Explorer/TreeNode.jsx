@@ -2,19 +2,25 @@
 import React, { useState } from 'react';
 import { useEditorStore } from '../../stores/editorStore';
 
-export default function TreeNode({ node, depth = 0 }) {
+export default function TreeNode({ node, depth = 0, parentPath = '' }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const { openFile, activeFile } = useEditorStore();
 
   const isDir = node.type === 'dir';
-  const isActive = activeFile === node.path;
+  const currentPath = parentPath
+    ? `${parentPath}/${node.name}`
+    : node.name === 'root'
+      ? ''
+      : `/${node.name}`;
+  const absolutePath = currentPath.replace('//', '/'); // safety fallback
+  const isActive = activeFile === absolutePath;
   const paddingLeft = Math.max(16, depth * 12 + 16);
 
   const handleClick = () => {
     if (isDir) {
       setIsExpanded(!isExpanded);
     } else {
-      openFile(node.path);
+      openFile(absolutePath);
     }
   };
 
@@ -72,7 +78,12 @@ export default function TreeNode({ node, depth = 0 }) {
       {isDir && isExpanded && node.children && (
         <div>
           {node.children.map((childNode) => (
-            <TreeNode key={childNode.path} node={childNode} depth={depth + 1} />
+            <TreeNode
+              key={childNode.id || childNode.name}
+              node={childNode}
+              depth={depth + 1}
+              parentPath={absolutePath}
+            />
           ))}
         </div>
       )}

@@ -70,16 +70,18 @@ class FileSystemAPI {
    */
   async writeFile(path, content, opts = {}) {
     guardWrite(path, opts.sourceModule ?? 'UI');
-    await memfs.writeFile(path, content);
+    await memfs.writeFile(path, content, opts.sourceModule ?? 'UI', opts.silent);
 
-    // Phase 5.1: recompute Merkle rootTreeHash after each write (O(depth))
-    try {
-      const newHash = await snapshotStore.computeDirHash(memfs.workspace.root);
-      memfs.workspace.version = newHash;
-      const fileCount = memfs.readdir('/', { recursive: true }).length;
-      recordSnapshot(newHash, fileCount, opts.label || `Wrote ${path.split('/').pop()}`);
-    } catch {
-      // Non-fatal — hash failure doesn’t block the write
+    if (!opts.silent) {
+      // Phase 5.1: recompute Merkle rootTreeHash after each write (O(depth))
+      try {
+        const newHash = await snapshotStore.computeDirHash(memfs.workspace.root);
+        memfs.workspace.version = newHash;
+        const fileCount = memfs.readdir('/', { recursive: true }).length;
+        recordSnapshot(newHash, fileCount, opts.label || `Wrote ${path.split('/').pop()}`);
+      } catch {
+        // Non-fatal — hash failure doesn’t block the write
+      }
     }
   }
 

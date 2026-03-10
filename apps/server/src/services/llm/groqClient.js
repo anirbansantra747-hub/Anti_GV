@@ -31,8 +31,18 @@ export const generateGroqResponse = async (messages, options = {}) => {
     params.response_format = { type: 'json_object' };
   }
 
-  const completion = await getGroq().chat.completions.create(params);
-  return completion.choices[0]?.message?.content || '';
+  try {
+    const completion = await getGroq().chat.completions.create(params);
+    return completion.choices[0]?.message?.content || '';
+  } catch (error) {
+    if (error.status === 429 && params.model === 'llama-3.3-70b-versatile') {
+      console.warn('[GroqClient] Rate limit hit for 70b. Falling back to llama-3.1-8b-instant...');
+      params.model = 'llama-3.1-8b-instant';
+      const fallbackCompletion = await getGroq().chat.completions.create(params);
+      return fallbackCompletion.choices[0]?.message?.content || '';
+    }
+    throw error;
+  }
 };
 
 export const streamGroqResponse = async (messages, options = {}) => {
@@ -48,5 +58,16 @@ export const streamGroqResponse = async (messages, options = {}) => {
     params.response_format = { type: 'json_object' };
   }
 
-  return await getGroq().chat.completions.create(params);
+  try {
+    return await getGroq().chat.completions.create(params);
+  } catch (error) {
+    if (error.status === 429 && params.model === 'llama-3.3-70b-versatile') {
+      console.warn(
+        '[GroqClient] Rate limit hit for 70b stream. Falling back to llama-3.1-8b-instant...'
+      );
+      params.model = 'llama-3.1-8b-instant';
+      return await getGroq().chat.completions.create(params);
+    }
+    throw error;
+  }
 };

@@ -4,40 +4,50 @@
  * @description Sleek, transparent Top navigation bar using Lucide icons.
  */
 
-import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { Save, CheckCircle, XCircle, Loader, Zap, History } from 'lucide-react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { Save, CheckCircle, XCircle, Loader, Zap, History, Menu } from 'lucide-react';
 import { useFileSystemStore } from '../../stores/fileSystemStore.js';
+import { useAgentStore } from '../../stores/agentStore.js';
 import { remoteSync } from '../../services/remoteSync.js';
 
 const HistoryDrawer = lazy(() => import('../History/HistoryDrawer.jsx'));
 
 const STATE_CONFIG = {
-  IDLE:        { color: '#22c55e', label: 'IDLE'        },
-  AI_PENDING:  { color: '#f59e0b', label: 'AI PENDING'  },
+  IDLE: { color: '#22c55e', label: 'IDLE' },
+  AI_PENDING: { color: '#f59e0b', label: 'AI PENDING' },
   DIFF_REVIEW: { color: '#3b82f6', label: 'DIFF REVIEW' },
-  COMMITTING:  { color: '#a855f7', label: 'COMMITTING'  },
-  CONFLICT:    { color: '#ef4444', label: 'CONFLICT'    },
-  ERROR:       { color: '#ef4444', label: 'ERROR'       },
+  COMMITTING: { color: '#a855f7', label: 'COMMITTING' },
+  CONFLICT: { color: '#ef4444', label: 'CONFLICT' },
+  ERROR: { color: '#ef4444', label: 'ERROR' },
 };
 
 function StateBadge({ state }) {
   const cfg = STATE_CONFIG[state] || STATE_CONFIG.IDLE;
   const isAnimated = state !== 'IDLE';
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 6,
-      background: `${cfg.color}11`,
-      border: `1px solid ${cfg.color}33`,
-      borderRadius: 20, padding: '4px 12px',
-      boxShadow: `inset 0 0 12px ${cfg.color}11`,
-    }}>
-      <span style={{
-        width: 6, height: 6, borderRadius: '50%',
-        background: cfg.color,
-        boxShadow: `0 0 8px ${cfg.color}`,
-        display: 'inline-block',
-        animation: isAnimated ? 'wsStatePulse 1.4s ease-in-out infinite' : 'none',
-      }} />
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        background: `${cfg.color}11`,
+        border: `1px solid ${cfg.color}33`,
+        borderRadius: 20,
+        padding: '4px 12px',
+        boxShadow: `inset 0 0 12px ${cfg.color}11`,
+      }}
+    >
+      <span
+        style={{
+          width: 6,
+          height: 6,
+          borderRadius: '50%',
+          background: cfg.color,
+          boxShadow: `0 0 8px ${cfg.color}`,
+          display: 'inline-block',
+          animation: isAnimated ? 'wsStatePulse 1.4s ease-in-out infinite' : 'none',
+        }}
+      />
       <span style={{ fontSize: 10, fontWeight: 700, color: cfg.color, letterSpacing: '0.1em' }}>
         {cfg.label}
       </span>
@@ -46,18 +56,31 @@ function StateBadge({ state }) {
 }
 
 const SAVE_ICONS = {
-  idle:   { Icon: Save,         color: 'var(--accent)', label: 'Save'      },
-  saving: { Icon: Loader,       color: '#94a3b8',       label: 'Saving…'   },
-  saved:  { Icon: CheckCircle,  color: '#4ade80',       label: 'Saved'     },
-  error:  { Icon: XCircle,      color: '#f87171',       label: 'Failed'    },
+  idle: { Icon: Save, color: 'var(--accent)', label: 'Save' },
+  saving: { Icon: Loader, color: '#94a3b8', label: 'Saving…' },
+  saved: { Icon: CheckCircle, color: '#4ade80', label: 'Saved' },
+  error: { Icon: XCircle, color: '#f87171', label: 'Failed' },
 };
 
 export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false }) {
   const workspaceState = useFileSystemStore((s) => s.workspaceState);
   const workspaceVersion = useFileSystemStore((s) => s.workspaceVersion);
-  const [saveStatus, setSaveStatus]   = useState('idle');
+  const socket = useAgentStore((s) => s.socket);
+  const [saveStatus, setSaveStatus] = useState('idle');
   const [showRecovered, setShowRecovered] = useState(recoveredFromIDB);
   const [showHistory, setShowHistory] = useState(false);
+  const [showFileMenu, setShowFileMenu] = useState(false);
+  const fileMenuRef = useRef(null);
+
+  // Close file menu on outside click
+  useEffect(() => {
+    if (!showFileMenu) return;
+    const handler = (e) => {
+      if (fileMenuRef.current && !fileMenuRef.current.contains(e.target)) setShowFileMenu(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showFileMenu]);
 
   useEffect(() => {
     if (!recoveredFromIDB) return;
@@ -89,27 +112,132 @@ export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false }
         @keyframes topbarSpin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
       `}</style>
 
-      <div style={{
-        height: 56, display: 'flex', alignItems: 'center',
-        padding: '0 20px', gap: 16,
-        background: 'transparent', // Let app background show through
-        flexShrink: 0, zIndex: 20,
-      }}>
+      <div
+        style={{
+          height: 56,
+          display: 'flex',
+          alignItems: 'center',
+          padding: '0 20px',
+          gap: 16,
+          background: 'transparent', // Let app background show through
+          flexShrink: 0,
+          zIndex: 20,
+        }}
+      >
+        {/* Hamburger / File menu */}
+        <div ref={fileMenuRef} style={{ position: 'relative' }}>
+          <button
+            onClick={() => setShowFileMenu((v) => !v)}
+            title="File menu"
+            style={{
+              background: showFileMenu ? 'rgba(255,255,255,0.08)' : 'transparent',
+              border: 'none',
+              color: '#94a3b8',
+              cursor: 'pointer',
+              padding: '6px 8px',
+              borderRadius: 6,
+              display: 'flex',
+              alignItems: 'center',
+              transition: 'background 0.1s, color 0.1s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+              e.currentTarget.style.color = '#e2e8f0';
+            }}
+            onMouseLeave={(e) => {
+              if (!showFileMenu) {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = '#94a3b8';
+              }
+            }}
+          >
+            <Menu size={18} strokeWidth={2} />
+          </button>
+
+          {showFileMenu && (
+            <div
+              style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                marginTop: 4,
+                background: '#1e293b',
+                border: '1px solid #334155',
+                borderRadius: '6px',
+                padding: '4px 0',
+                minWidth: '200px',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                zIndex: 1000,
+              }}
+            >
+              {[
+                { label: '📂  Open Folder…', action: () => socket?.emit('fs:pick_folder') },
+                { divider: true },
+                { label: '💾  Save', action: () => handleSave(), kbd: 'Ctrl+S' },
+              ].map((item, i) =>
+                item.divider ? (
+                  <div key={i} style={{ height: 1, background: '#334155', margin: '4px 0' }} />
+                ) : (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      setShowFileMenu(false);
+                      item.action?.();
+                    }}
+                    style={{
+                      display: 'flex',
+                      width: '100%',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#cbd5e1',
+                      padding: '7px 14px',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                      transition: 'background 0.1s',
+                    }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.background = 'rgba(56,189,248,0.1)')
+                    }
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <span>{item.label}</span>
+                    {item.kbd && <span style={{ fontSize: 11, color: '#64748b' }}>{item.kbd}</span>}
+                  </button>
+                )
+              )}
+            </div>
+          )}
+        </div>
+
         {/* Logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginRight: 8 }}>
-          <div style={{
-            width: 30, height: 30, borderRadius: 8,
-            background: 'linear-gradient(135deg, var(--accent) 0%, #818cf8 100%)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 4px 12px var(--accent-glow)'
-          }}>
+          <div
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 8,
+              background: 'linear-gradient(135deg, var(--accent) 0%, #818cf8 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 4px 12px var(--accent-glow)',
+            }}
+          >
             <Zap size={16} color="#ffffff" strokeWidth={2.5} />
           </div>
-          <span style={{
-            fontWeight: 800, fontSize: 18, letterSpacing: '-0.03em',
-            background: 'linear-gradient(120deg, #ffffff 30%, var(--accent) 100%)',
-            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-          }}>
+          <span
+            style={{
+              fontWeight: 800,
+              fontSize: 18,
+              letterSpacing: '-0.03em',
+              background: 'linear-gradient(120deg, #ffffff 30%, var(--accent) 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+            }}
+          >
             Anti_GV
           </span>
         </div>
@@ -119,12 +247,17 @@ export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false }
 
         {/* Dev tab role */}
         {import.meta.env.DEV && (
-          <div style={{
-            fontSize: 10, color: 'var(--text-muted)',
-            border: '1px solid var(--panel-border)', borderRadius: 6,
-            padding: '3px 8px', fontFamily: '"JetBrains Mono", monospace',
-            background: 'rgba(255,255,255,0.02)'
-          }}>
+          <div
+            style={{
+              fontSize: 10,
+              color: 'var(--text-muted)',
+              border: '1px solid var(--panel-border)',
+              borderRadius: 6,
+              padding: '3px 8px',
+              fontFamily: '"JetBrains Mono", monospace',
+              background: 'rgba(255,255,255,0.02)',
+            }}
+          >
             {tabRole.toUpperCase()}
           </div>
         )}
@@ -134,13 +267,21 @@ export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false }
 
         {/* IDB recovery toast */}
         {showRecovered && (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            fontSize: 12, fontWeight: 500, color: '#4ade80',
-            background: 'rgba(34,197,94,0.1)',
-            border: '1px solid #22c55e33', borderRadius: 6, padding: '4px 12px',
-            animation: 'topbarSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-          }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              fontSize: 12,
+              fontWeight: 500,
+              color: '#4ade80',
+              background: 'rgba(34,197,94,0.1)',
+              border: '1px solid #22c55e33',
+              borderRadius: 6,
+              padding: '4px 12px',
+              animation: 'topbarSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+            }}
+          >
             <CheckCircle size={14} strokeWidth={2.5} />
             Recovered from local cache
           </div>
@@ -152,13 +293,21 @@ export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false }
           title="Workspace history (snapshots)"
           onClick={() => setShowHistory((v) => !v)}
           style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '6px 12px', borderRadius: 8,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '6px 12px',
+            borderRadius: 8,
             background: showHistory ? 'var(--accent-glow)' : 'rgba(255,255,255,0.04)',
             color: showHistory ? 'var(--accent)' : 'var(--text-secondary)',
-            border: showHistory ? '1px solid rgba(34,211,238,0.25)' : '1px solid var(--panel-border)',
-            cursor: 'pointer', fontSize: 12, fontWeight: 600,
-            fontFamily: 'inherit', transition: 'all 0.15s',
+            border: showHistory
+              ? '1px solid rgba(34,211,238,0.25)'
+              : '1px solid var(--panel-border)',
+            cursor: 'pointer',
+            fontSize: 12,
+            fontWeight: 600,
+            fontFamily: 'inherit',
+            transition: 'all 0.15s',
           }}
         >
           <History size={14} strokeWidth={2} />
@@ -170,19 +319,28 @@ export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false }
           onClick={handleSave}
           disabled={saveStatus === 'saving'}
           style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            padding: '6px 16px', borderRadius: 8,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '6px 16px',
+            borderRadius: 8,
             background: `${saveColor}11`,
             color: saveColor,
             border: `1px solid ${saveColor}33`,
             cursor: saveStatus === 'saving' ? 'default' : 'pointer',
-            fontSize: 13, fontFamily: 'inherit', fontWeight: 600,
+            fontSize: 13,
+            fontFamily: 'inherit',
+            fontWeight: 600,
             transition: 'all 0.2s',
             boxShadow: `0 4px 12px ${saveColor}11`,
             opacity: saveStatus === 'saving' ? 0.7 : 1,
           }}
-          onMouseEnter={e => { if(saveStatus==='idle') e.currentTarget.style.background = `${saveColor}22`}}
-          onMouseLeave={e => { if(saveStatus==='idle') e.currentTarget.style.background = `${saveColor}11`}}
+          onMouseEnter={(e) => {
+            if (saveStatus === 'idle') e.currentTarget.style.background = `${saveColor}22`;
+          }}
+          onMouseLeave={(e) => {
+            if (saveStatus === 'idle') e.currentTarget.style.background = `${saveColor}11`;
+          }}
         >
           <SaveIcon
             size={16}

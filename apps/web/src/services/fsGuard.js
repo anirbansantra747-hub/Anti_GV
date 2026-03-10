@@ -1,4 +1,3 @@
-/* eslint-disable no-unused-vars */
 /**
  * @file fsGuard.js
  * @description The FS Authority Enforcement Layer (V3 ADR).
@@ -19,7 +18,7 @@ import { hasPermission } from './modulePermissions.js';
 import { FsInvalidPathError, FsPermissionError, FsLockedError } from './fsErrors.js';
 
 // Paths/names that can never be written to
-const RESERVED_NAMES = new Set(['.git', 'node_modules', '.env', '.DS_Store']);
+const RESERVED_NAMES = new Set(['.git', 'node_modules', '.DS_Store']);
 
 // States in which writes are allowed
 const WRITABLE_STATES = new Set(['IDLE', 'COMMITTING']);

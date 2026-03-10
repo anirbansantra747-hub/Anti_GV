@@ -2,10 +2,29 @@ import fs from 'fs/promises';
 import path from 'path';
 
 // Get the workspace root from environment, default to two levels up (Anti_GV root)
-const WORKSPACE_ROOT = path.resolve(process.cwd(), process.env.WORKSPACE_ROOT || '../../');
+let workspaceRoot = path.resolve(process.cwd(), process.env.WORKSPACE_ROOT || '../../');
+
+export const getWorkspaceRoot = () => workspaceRoot;
 
 /**
- * Validates and resolves a requested path against the WORKSPACE_ROOT.
+ * Changes the current backend workspace root directory dynamically.
+ */
+export const changeWorkspace = async (newPath) => {
+  const resolved = path.resolve(newPath);
+  try {
+    const stats = await fs.stat(resolved);
+    if (!stats.isDirectory()) {
+      throw new Error('Provided path is not a directory.');
+    }
+    workspaceRoot = resolved;
+    return workspaceRoot;
+  } catch (err) {
+    throw new Error(`Failed to change workspace: ${err.message}`);
+  }
+};
+
+/**
+ * Validates and resolves a requested path against the workspaceRoot.
  * Prevents Directory Traversal attacks.
  * @param {string} targetPath - The requested relative or absolute path.
  * @returns {string} The fully resolved, safe absolute path.
@@ -14,10 +33,10 @@ export const resolveSafePath = (targetPath) => {
   if (!targetPath) throw new Error('Path cannot be empty');
 
   // Resolve the full path
-  const resolvedPath = path.resolve(WORKSPACE_ROOT, targetPath.replace(/^\/+/, '')); // strip leading slashes if sent as absolute-like
+  const resolvedPath = path.resolve(workspaceRoot, targetPath.replace(/^\/+/, '')); // strip leading slashes if sent as absolute-like
 
   // Enforce chroot jail
-  if (!resolvedPath.startsWith(WORKSPACE_ROOT)) {
+  if (!resolvedPath.startsWith(workspaceRoot)) {
     throw new Error(`Path traversal denied: ${targetPath}`);
   }
 
@@ -65,7 +84,7 @@ export const listDir = async (targetPath) => {
   return dirents.map((dirent) => ({
     name: dirent.name,
     type: dirent.isDirectory() ? 'dir' : 'file',
-    path: path.relative(WORKSPACE_ROOT, path.join(safePath, dirent.name)).replace(/\\/g, '/'),
+    path: path.relative(workspaceRoot, path.join(safePath, dirent.name)).replace(/\\/g, '/'),
   }));
 };
 

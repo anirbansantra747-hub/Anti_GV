@@ -66,6 +66,7 @@ export function DiffViewer({ txId, patchedPaths, onClose }) {
       theme: 'vs-dark',
       fontSize: 13,
       minimap: { enabled: false },
+      automaticLayout: true,
     });
 
     const lang = guessLanguage(currentPath);
@@ -85,7 +86,14 @@ export function DiffViewer({ txId, patchedPaths, onClose }) {
   const allDecided = patchedPaths.every((p) => decisions[p]);
 
   function decide(path, choice) {
-    setDecisions((prev) => ({ ...prev, [path]: choice }));
+    const newDecisions = { ...decisions, [path]: choice };
+    setDecisions(newDecisions);
+
+    // Auto-advance to the next undecided file
+    const nextIndex = patchedPaths.findIndex((p) => !newDecisions[p]);
+    if (nextIndex !== -1) {
+      setCurrentIndex(nextIndex);
+    }
   }
 
   async function handleFinalCommit() {
@@ -152,14 +160,24 @@ export function DiffViewer({ txId, patchedPaths, onClose }) {
         {/* Per-file Accept/Reject */}
         <div style={styles.fileActions}>
           <button
-            style={{ ...styles.btn, ...styles.btnAccept }}
+            style={{
+              ...styles.btn,
+              ...styles.btnAccept,
+              opacity: decisions[currentPath] ? 0.4 : 1,
+              cursor: decisions[currentPath] ? 'not-allowed' : 'pointer',
+            }}
             onClick={() => decide(currentPath, 'accept')}
             disabled={!!decisions[currentPath]}
           >
             ✅ Accept
           </button>
           <button
-            style={{ ...styles.btn, ...styles.btnReject }}
+            style={{
+              ...styles.btn,
+              ...styles.btnReject,
+              opacity: decisions[currentPath] ? 0.4 : 1,
+              cursor: decisions[currentPath] ? 'not-allowed' : 'pointer',
+            }}
             onClick={() => decide(currentPath, 'reject')}
             disabled={!!decisions[currentPath]}
           >
@@ -238,6 +256,7 @@ const styles = {
     borderRadius: 12,
     width: '90vw',
     maxWidth: 1200,
+    height: '85vh',
     maxHeight: '90vh',
     display: 'flex',
     flexDirection: 'column',
@@ -273,13 +292,15 @@ const styles = {
     whiteSpace: 'nowrap',
   },
   fileTabActive: { background: '#3b82f6', color: '#fff', borderColor: '#3b82f6' },
-  monacoPane: { flex: 1, minHeight: 0 },
+  monacoPane: { flex: 1, minHeight: '400px', width: '100%' },
   fileActions: {
     display: 'flex',
     gap: 10,
     padding: '10px 16px',
     borderTop: '1px solid #2d2d44',
     background: '#161622',
+    position: 'relative',
+    zIndex: 10,
   },
   footer: {
     display: 'flex',
@@ -297,6 +318,7 @@ const styles = {
     fontSize: 13,
     fontWeight: 600,
     transition: 'opacity 0.15s',
+    pointerEvents: 'auto',
   },
   btnAccept: { background: '#22c55e', color: '#fff' },
   btnReject: { background: '#ef4444', color: '#fff' },
