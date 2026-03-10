@@ -15,9 +15,13 @@ export const generateResponse = async (messages, options = {}) => {
       if (provider === 'groq') {
         return await generateGroqResponse(messages, options);
       } else if (provider === 'cerebras') {
-        return await generateCerebrasResponse(messages, options);
+        const fallbackOptions = { ...options };
+        delete fallbackOptions.model;
+        return await generateCerebrasResponse(messages, fallbackOptions);
       } else if (provider === 'gemini') {
-        return await generateGeminiResponse(messages, options);
+        const fallbackOptions = { ...options };
+        delete fallbackOptions.model;
+        return await generateGeminiResponse(messages, fallbackOptions);
       }
     } catch (error) {
       console.warn(`[llmRouter] ${provider} failed: ${error.message}. Attempting fallback...`);
@@ -34,9 +38,13 @@ export const streamResponse = async (messages, options = {}) => {
       if (provider === 'groq') {
         return { stream: await streamGroqResponse(messages, options), provider };
       } else if (provider === 'cerebras') {
-        return { stream: await streamCerebrasResponse(messages, options), provider };
+        const fallbackOptions = { ...options };
+        delete fallbackOptions.model;
+        return { stream: await streamCerebrasResponse(messages, fallbackOptions), provider };
       } else if (provider === 'gemini') {
-        return { stream: await streamGeminiResponse(messages, options), provider };
+        const fallbackOptions = { ...options };
+        delete fallbackOptions.model;
+        return { stream: await streamGeminiResponse(messages, fallbackOptions), provider };
       }
     } catch (error) {
       console.warn(

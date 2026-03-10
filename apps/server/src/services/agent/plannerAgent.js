@@ -1,4 +1,4 @@
-import { generateGroqResponse } from '../llm/groqClient.js';
+import { generateResponse as generateGroqResponse } from '../llm/llmRouter.js';
 import { planJsonSchemaInstructions } from './schemas/planSchema.js';
 
 const SYSTEM_PROMPT = `
@@ -6,10 +6,12 @@ You are an expert Software Architect Planner Agent.
 Your job is to read the user's prompt and the provided codebase context, and output a strict JSON array of steps required to implement the requested changes.
 
 RULES:
-1. Break down the work into ATOMIC steps. One step = one file change (CREATE, MODIFY, DELETE) or one command (RUN_COMMAND).
-2. Order the steps correctly using "depends_on". You cannot import a file before it is created in an earlier step!
-3. DO NOT write the actual code. You only write the plan and the general description for each file change.
-4. Your response must be ONLY valid JSON matching the exact schema requested, with no markdown code block wrapping.
+1. Break down the work into ATOMIC steps. 
+2. **CRITICAL:** You must formulate exactly ONE step per file. DO NOT create multiple MODIFY steps for the same file. Group all modifications for a single file into a single MODIFY step.
+3. Order the steps correctly using "depends_on". You cannot import a file before it is created in an earlier step!
+4. DO NOT write the actual code. You only write the plan and the general description for each file change.
+5. Your response must be ONLY valid JSON matching the exact schema requested, with no markdown code block wrapping.
+6. **CRITICAL:** Only operate on FILES. DO NOT emit steps to CREATE, MODIFY, or DELETE directories/folders. The file system creates folders automatically when you create a file inside them.
 
 SCHEMA:
 ${planJsonSchemaInstructions}

@@ -1,4 +1,3 @@
-/* eslint-disable no-unused-vars */
 /**
  * @file memfsService.js
  * @description The absolute source of truth for the active Workspace.
@@ -86,7 +85,7 @@ class MemfsService {
    * @param {string} path
    * @param {string | ArrayBuffer} content
    */
-  async writeFile(path, content, moduleId = 'UI') {
+  async writeFile(path, content, moduleId = 'UI', silent = false) {
     guardWrite(path, moduleId);
     const loc = this._traverse(path, true);
     if (!loc) throw new FsInvalidPathError(path, 'Could not resolve parent directory');
@@ -117,7 +116,9 @@ class MemfsService {
       node.binary = binary;
     }
 
-    this._triggerWorkspaceUpdate(path);
+    if (!silent) {
+      this._triggerWorkspaceUpdate(path);
+    }
   }
 
   /**

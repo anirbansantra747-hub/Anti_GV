@@ -1,4 +1,3 @@
-/* eslint-disable no-unused-vars */
 /**
  * @file localFileService.js
  * @description Handles importing files and folders from the local OS filesystem
@@ -13,17 +12,45 @@
  */
 
 import { fileSystemAPI } from './fileSystemAPI.js';
+import { memfs } from './memfsService.js';
+import { snapshotStore } from './snapshotService.js';
+import { bus, Events } from './eventBus.js';
+import { recordSnapshot } from '../components/History/HistoryDrawer.jsx';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB — skip files larger than this
 
 // Extensions we will treat as binary (skip text decoding)
 const BINARY_EXTS = new Set([
-  'png','jpg','jpeg','gif','webp','svg','ico','bmp',
-  'woff','woff2','ttf','eot','otf',
-  'mp3','mp4','wav','ogg','webm',
-  'pdf','zip','gz','tar','7z','rar',
-  'exe','dll','so','dylib','node',
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'webp',
+  'svg',
+  'ico',
+  'bmp',
+  'woff',
+  'woff2',
+  'ttf',
+  'eot',
+  'otf',
+  'mp3',
+  'mp4',
+  'wav',
+  'ogg',
+  'webm',
+  'pdf',
+  'zip',
+  'gz',
+  'tar',
+  '7z',
+  'rar',
+  'exe',
+  'dll',
+  'so',
+  'dylib',
+  'node',
 ]);
 
 function isBinaryExt(filename) {
@@ -42,7 +69,9 @@ export async function writeFilesToMemfs(entries, onProgress) {
   let done = 0;
   for (const { path, file } of entries) {
     if (file.size > MAX_FILE_SIZE) {
-      console.warn(`[LocalFS] Skipping large file (${(file.size / 1024 / 1024).toFixed(1)} MB): ${path}`);
+      console.warn(
+        `[LocalFS] Skipping large file (${(file.size / 1024 / 1024).toFixed(1)} MB): ${path}`
+      );
       done++;
       continue;
     }
@@ -55,7 +84,7 @@ export async function writeFilesToMemfs(entries, onProgress) {
         content = await file.text();
       }
 
-      await fileSystemAPI.writeFile(path, content, { sourceModule: 'UI' });
+      await fileSystemAPI.writeFile(path, content, { sourceModule: 'UI', silent: true });
     } catch (err) {
       console.error(`[LocalFS] Failed to write ${path}:`, err);
     }
@@ -63,15 +92,27 @@ export async function writeFilesToMemfs(entries, onProgress) {
     done++;
     onProgress?.({ done, total: entries.length, current: path });
   }
+
+  if (entries.length > 0) {
+    try {
+      const newHash = await snapshotStore.computeDirHash(memfs.workspace.root);
+      memfs.workspace.version = newHash;
+      const fileCount = memfs.readdir('/', { recursive: true }).length;
+      recordSnapshot(newHash, fileCount, `Batch imported ${entries.length} files`);
+    } catch {
+      /* ignore */
+    }
+    bus.emit(Events.FS_MUTATED, { workspaceId: memfs.workspace.id, path: null });
+  }
 }
 
 // ── Strategy 1: File System Access API ────────────────────────────────────────
 
-export const supportsFileSystemAccess = typeof window !== 'undefined'
-  && 'showOpenFilePicker' in window;
+export const supportsFileSystemAccess =
+  typeof window !== 'undefined' && 'showOpenFilePicker' in window;
 
-export const supportsDirectoryPicker = typeof window !== 'undefined'
-  && 'showDirectoryPicker' in window;
+export const supportsDirectoryPicker =
+  typeof window !== 'undefined' && 'showDirectoryPicker' in window;
 
 /**
  * Open one or more files using showOpenFilePicker.

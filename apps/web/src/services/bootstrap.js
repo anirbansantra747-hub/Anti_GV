@@ -12,12 +12,13 @@
  *  5. EventBus listeners for global error reporting
  */
 
-import { tryRecover } from './crashRecovery.js';
 import { tabSyncService } from './tabSyncService.js';
 import { integrityService } from './integrityService.js';
 import { fileWatcher } from './fileWatcher.js';
 import { bus, Events } from './eventBus.js';
 import { isFsError } from './fsErrors.js';
+import { syncRealDiskToMemfs } from './initSyncService.js';
+
 // ⚠️ CRITICAL: import as a side-effect to activate the FS_MUTATED → IDB debounced auto-save subscription.
 // Without this, files written to memfs are NEVER persisted to IndexedDB.
 import './persistenceService.js';
@@ -34,11 +35,11 @@ import './workspaceMachine.js';
 export async function bootstrap() {
   console.log('[Bootstrap] Starting V3 Workspace Runtime…');
 
-  // ── Step 1: Crash Recovery ────────────────────────────────────────────────
+  // ── Step 1: True Hydration (Real Disk -> MemFS) ───────────────────────────
   let recovered = false;
   try {
-    recovered = await tryRecover();
-    console.log(`[Bootstrap] Recovery: ${recovered ? '✅ Hydrated from IDB' : '⚠️ Fresh start'}`);
+    recovered = await syncRealDiskToMemfs();
+    console.log(`[Bootstrap] Recovery: ${recovered ? '✅ Hydrated from API' : '⚠️ Fresh start'}`);
   } catch (err) {
     console.error('[Bootstrap] Recovery error (non-fatal):', err);
   }

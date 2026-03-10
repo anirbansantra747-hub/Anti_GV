@@ -1,4 +1,3 @@
-/* eslint-disable no-unused-vars */
 import { create } from 'zustand';
 import { io } from 'socket.io-client';
 import { contextService } from '../services/contextService.js'; // Teammate's context gatherer
@@ -26,6 +25,19 @@ export const useAgentStore = create((set, get) => {
 
       socket.on('disconnect', () => {
         set({ isConnected: false });
+      });
+
+      socket.on('fs:workspace_changed', async (payload) => {
+        console.log(`[Workspace] Changed to ${payload.newRoot}`);
+        try {
+          const { syncRealDiskToMemfs } = await import('../services/initSyncService.js');
+          const { useEditorStore } = await import('./editorStore.js');
+
+          useEditorStore.getState().closeAllTabs();
+          await syncRealDiskToMemfs();
+        } catch (err) {
+          console.error('[Workspace] Failed to process workspace change:', err);
+        }
       });
 
       socket.on('agent:thinking', (payload) => {
@@ -77,6 +89,7 @@ export const useAgentStore = create((set, get) => {
               path: absolutePath,
               operations: parsedChunk.edits.map((edit) => ({
                 type: edit.search ? 'replace' : 'insert',
+                search: edit.search || undefined,
                 content: edit.replace,
               })),
             };
@@ -117,15 +130,57 @@ export const useAgentStore = create((set, get) => {
         set({ isThinking: false, thinkingMessage: '' });
       });
 
-      socket.on('agent:done', (payload) => {
+      socket.on('agent:message:start', (payload) => {
         set((state) => ({
           isThinking: false,
           thinkingMessage: '',
           messages: [
             ...state.messages,
-            { id: Date.now(), role: 'assistant', type: 'text', content: payload.message },
+            {
+              id: payload.messageId,
+              role: 'assistant',
+              type: 'text',
+              content: '',
+              isStreaming: true,
+            },
           ],
         }));
+      });
+
+      socket.on('agent:message:stream', (payload) => {
+        set((state) => ({
+          messages: state.messages.map((msg) =>
+            msg.id === payload.messageId ? { ...msg, content: msg.content + payload.chunk } : msg
+          ),
+        }));
+      });
+
+      socket.on('agent:done', (payload) => {
+        set((state) => {
+          const { messageId, message } = payload;
+
+          if (messageId) {
+            return {
+              isThinking: false,
+              thinkingMessage: '',
+              messages: state.messages.map((msg) =>
+                msg.id === messageId
+                  ? { ...msg, isStreaming: false, content: msg.content || message }
+                  : msg
+              ),
+            };
+          }
+
+          // Fallback if no messageId was provided but there's a final message
+          return {
+            isThinking: false,
+            thinkingMessage: '',
+            messages: [
+              ...state.messages,
+              { id: Date.now(), role: 'assistant', type: 'text', content: message },
+            ],
+          };
+        });
       });
 
       socket.on('agent:error', (payload) => {
