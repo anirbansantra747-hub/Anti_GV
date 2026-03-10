@@ -16,10 +16,16 @@ const SIDEBAR_DEFAULT = 240;
 const AIPANEL_DEFAULT = 380;
 const TERMINAL_DEFAULT = 220;
 
-function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
+function clamp(v, min, max) {
+  return Math.min(max, Math.max(min, v));
+}
 function readLS(key, fallback) {
-  try { const v = Number(localStorage.getItem(key)); return isNaN(v) ? fallback : v; }
-  catch { return fallback; }
+  try {
+    const v = Number(localStorage.getItem(key));
+    return isNaN(v) ? fallback : v;
+  } catch {
+    return fallback;
+  }
 }
 
 // ── Resize handle ─────────────────────────────────────────────────────────────
@@ -27,23 +33,26 @@ function ResizeHandle({ direction = 'horizontal', onResize, className }) {
   const isH = direction === 'horizontal';
   const handleRef = useRef(null);
 
-  const onMouseDown = useCallback((e) => {
-    e.preventDefault();
-    document.body.classList.add(isH ? 'resizing-h' : 'resizing-v');
-    const startPos = isH ? e.clientX : e.clientY;
+  const onMouseDown = useCallback(
+    (e) => {
+      e.preventDefault();
+      document.body.classList.add(isH ? 'resizing-h' : 'resizing-v');
+      const startPos = isH ? e.clientX : e.clientY;
 
-    const move = (mv) => {
-      const delta = (isH ? mv.clientX : mv.clientY) - startPos;
-      onResize(delta, isH ? mv.clientX : mv.clientY);
-    };
-    const up = () => {
-      document.body.classList.remove('resizing-h', 'resizing-v');
-      window.removeEventListener('mousemove', move);
-      window.removeEventListener('mouseup', up);
-    };
-    window.addEventListener('mousemove', move);
-    window.addEventListener('mouseup', up);
-  }, [isH, onResize]);
+      const move = (mv) => {
+        const delta = (isH ? mv.clientX : mv.clientY) - startPos;
+        onResize(delta, isH ? mv.clientX : mv.clientY);
+      };
+      const up = () => {
+        document.body.classList.remove('resizing-h', 'resizing-v');
+        window.removeEventListener('mousemove', move);
+        window.removeEventListener('mouseup', up);
+      };
+      window.addEventListener('mousemove', move);
+      window.addEventListener('mouseup', up);
+    },
+    [isH, onResize]
+  );
 
   return (
     <div
@@ -51,7 +60,7 @@ function ResizeHandle({ direction = 'horizontal', onResize, className }) {
       onMouseDown={onMouseDown}
       style={{
         flexShrink: 0,
-        width:  isH ? 4 : '100%',
+        width: isH ? 4 : '100%',
         height: isH ? '100%' : 4,
         cursor: isH ? 'col-resize' : 'row-resize',
         background: 'var(--resize-handle-color)',
@@ -67,18 +76,25 @@ function ResizeHandle({ direction = 'horizontal', onResize, className }) {
 // ── Main App ─────────────────────────────────────────────────────────────────
 export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
   // Panel sizes (persisted to localStorage)
-  const [sidebarW, setSidebarW]   = useState(() => readLS('sidebar-w', SIDEBAR_DEFAULT));
-  const [aiPanelW, setAiPanelW]   = useState(() => readLS('aipanel-w', AIPANEL_DEFAULT));
+  const [sidebarW, setSidebarW] = useState(() => {
+    const stored = readLS('sidebar-w', SIDEBAR_DEFAULT);
+    return stored < 160 ? SIDEBAR_DEFAULT : stored; // Fix: prevent near-zero stored values
+  });
+  const [aiPanelW, setAiPanelW] = useState(() => {
+    const stored = readLS('aipanel-w', AIPANEL_DEFAULT);
+    return stored < 200 ? AIPANEL_DEFAULT : stored;
+  });
   const [terminalH, setTerminalH] = useState(TERMINAL_DEFAULT);
   const [terminalOpen, setTerminalOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   // Resize origins
-  const sidebarStartW  = useRef(sidebarW);
-  const aiPanelStartW  = useRef(aiPanelW);
-  const termStartH     = useRef(terminalH);
+  const sidebarStartW = useRef(sidebarW);
+  const aiPanelStartW = useRef(aiPanelW);
+  const termStartH = useRef(terminalH);
 
   // StatusBar state
-  const [cursorPos,  setCursorPos]  = useState(null);
+  const [cursorPos, setCursorPos] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
 
   // QuickOpen overlay
@@ -92,8 +108,10 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
   const onSidebarResize = useCallback((delta, absX) => {
     const newW = clamp(
       sidebarStartW.current + delta,
-      parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sidebar-min-w')) || 160,
-      parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sidebar-max-w')) || 480
+      parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sidebar-min-w')) ||
+        160,
+      parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sidebar-max-w')) ||
+        480
     );
     setSidebarW(newW);
     localStorage.setItem('sidebar-w', newW);
@@ -102,8 +120,10 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
   const onAiPanelResize = useCallback((delta, absX) => {
     const newW = clamp(
       aiPanelStartW.current - delta,
-      parseInt(getComputedStyle(document.documentElement).getPropertyValue('--aipanel-min-w')) || 260,
-      parseInt(getComputedStyle(document.documentElement).getPropertyValue('--aipanel-max-w')) || 580
+      parseInt(getComputedStyle(document.documentElement).getPropertyValue('--aipanel-min-w')) ||
+        260,
+      parseInt(getComputedStyle(document.documentElement).getPropertyValue('--aipanel-max-w')) ||
+        580
     );
     setAiPanelW(newW);
     localStorage.setItem('aipanel-w', newW);
@@ -115,9 +135,15 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
   }, []);
 
   // Save resize start on mousedown by listening to ResizeHandle's mousedown
-  const handleSidebarResizeStart  = () => { sidebarStartW.current  = sidebarW; };
-  const handleAiPanelResizeStart  = () => { aiPanelStartW.current  = aiPanelW; };
-  const handleTerminalResizeStart = () => { termStartH.current     = terminalH; };
+  const handleSidebarResizeStart = () => {
+    sidebarStartW.current = sidebarW;
+  };
+  const handleAiPanelResizeStart = () => {
+    aiPanelStartW.current = aiPanelW;
+  };
+  const handleTerminalResizeStart = () => {
+    termStartH.current = terminalH;
+  };
 
   // ── Keyboard shortcut: Ctrl+P → QuickOpen ──────────────────────────────────
   useEffect(() => {
@@ -140,22 +166,30 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
   };
   const onAppDragLeave = () => {
     dragCounterRef.current--;
-    if (dragCounterRef.current <= 0) { dragCounterRef.current = 0; setFullDragOver(false); }
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      setFullDragOver(false);
+    }
   };
-  const onAppDragOver  = (e) => e.preventDefault();
-  const onAppDrop      = async (e) => {
+  const onAppDragOver = (e) => e.preventDefault();
+  const onAppDrop = async (e) => {
     e.preventDefault();
     dragCounterRef.current = 0;
     setFullDragOver(false);
-    try { await handleDrop(e); }
-    catch (err) { if (err?.name !== 'AbortError') console.error('[App] Drop failed:', err); }
+    try {
+      await handleDrop(e);
+    } catch (err) {
+      if (err?.name !== 'AbortError') console.error('[App] Drop failed:', err);
+    }
   };
 
   return (
     <div
       style={{
-        display: 'flex', flexDirection: 'column',
-        height: '100vh', width: '100vw',
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100vh',
+        width: '100vw',
         background: 'var(--app-bg)',
         color: 'var(--text-primary)',
         fontFamily: 'var(--font-ui)',
@@ -169,21 +203,33 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
     >
       {/* ── Full-app drop overlay ──────────────────────────────────────────── */}
       {fullDragOver && (
-        <div style={{
-          position: 'absolute', inset: 0, zIndex: 2000,
-          background: 'rgba(34,211,238,0.06)',
-          border: '2px dashed var(--accent)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          backdropFilter: 'blur(2px)',
-          pointerEvents: 'none',
-          animation: 'fadeIn 0.15s ease',
-        }}>
-          <div style={{
-            background: 'var(--panel-bg)', border: '1px solid var(--accent)',
-            borderRadius: 14, padding: '20px 36px',
-            color: 'var(--accent)', fontSize: 16, fontWeight: 700,
-            boxShadow: '0 16px 48px rgba(0,0,0,0.5)',
-          }}>
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 2000,
+            background: 'rgba(34,211,238,0.06)',
+            border: '2px dashed var(--accent)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backdropFilter: 'blur(2px)',
+            pointerEvents: 'none',
+            animation: 'fadeIn 0.15s ease',
+          }}
+        >
+          <div
+            style={{
+              background: 'var(--panel-bg)',
+              border: '1px solid var(--accent)',
+              borderRadius: 14,
+              padding: '20px 36px',
+              color: 'var(--accent)',
+              fontSize: 16,
+              fontWeight: 700,
+              boxShadow: '0 16px 48px rgba(0,0,0,0.5)',
+            }}
+          >
             📂 Drop files to open in workspace
           </div>
         </div>
@@ -197,25 +243,98 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
 
       {/* ── Main 3-column body ────────────────────────────────────────────── */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
+        {/* Activity Bar (Far Left) */}
+        <div
+          style={{
+            width: 48,
+            minWidth: 48,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            background: '#0d1117',
+            borderRight: '1px solid #131d2e',
+            paddingTop: 10,
+            flexShrink: 0,
+            zIndex: 10,
+          }}
+        >
+          <button
+            title="Explorer"
+            onClick={() => setSidebarOpen((v) => !v)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: sidebarOpen ? '#e2e8f0' : '#64748b',
+              cursor: 'pointer',
+              padding: '10px 0',
+              width: '100%',
+              display: 'flex',
+              justifyContent: 'center',
+              borderLeft: sidebarOpen ? '2px solid #38bdf8' : '2px solid transparent',
+            }}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+            </svg>
+          </button>
+        </div>
 
         {/* Left: File Tree */}
-        <div style={{ width: sidebarW, minWidth: sidebarW, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <FileTree />
-        </div>
+        {sidebarOpen && (
+          <div
+            style={{
+              width: sidebarW,
+              minWidth: sidebarW,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              background: '#111927',
+            }}
+          >
+            <FileTree />
+          </div>
+        )}
 
         {/* Resize: sidebar ↔ editor */}
-        <div onMouseDown={handleSidebarResizeStart}>
-          <ResizeHandle direction="horizontal" onResize={onSidebarResize} />
-        </div>
+        {sidebarOpen && (
+          <div onMouseDown={handleSidebarResizeStart}>
+            <ResizeHandle direction="horizontal" onResize={onSidebarResize} />
+          </div>
+        )}
 
         {/* Center: Editor + Terminal */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            minWidth: 0,
+          }}
+        >
           <TabBar />
 
-          <div style={{ flex: 1, overflow: 'hidden', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-            <MonacoEditor
-              onCursorPositionChange={setCursorPos}
-            />
+          <div
+            style={{
+              flex: 1,
+              overflow: 'hidden',
+              minHeight: 0,
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            <MonacoEditor onCursorPositionChange={setCursorPos} />
           </div>
 
           {/* Vertical resize handle for terminal */}
@@ -227,26 +346,40 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
 
           {/* Terminal */}
           {terminalOpen && (
-            <div style={{ height: terminalH, minHeight: terminalH, flexShrink: 0, overflow: 'hidden' }}>
+            <div
+              style={{ height: terminalH, minHeight: terminalH, flexShrink: 0, overflow: 'hidden' }}
+            >
               <Terminal />
             </div>
           )}
 
           {/* Terminal toggle strip */}
-          <div style={{
-            height: 24, display: 'flex', alignItems: 'center',
-            paddingLeft: 10, gap: 8,
-            background: '#060a12',
-            borderTop: '1px solid rgba(255,255,255,0.05)',
-            flexShrink: 0,
-          }}>
+          <div
+            style={{
+              height: 24,
+              display: 'flex',
+              alignItems: 'center',
+              paddingLeft: 10,
+              gap: 8,
+              background: '#060a12',
+              borderTop: '1px solid rgba(255,255,255,0.05)',
+              flexShrink: 0,
+            }}
+          >
             <button
               onClick={() => setTerminalOpen((v) => !v)}
               style={{
-                background: 'none', border: 'none', color: 'var(--text-muted)',
-                fontSize: 10, fontWeight: 700, letterSpacing: '0.08em',
-                cursor: 'pointer', padding: '2px 8px', borderRadius: 3,
-                textTransform: 'uppercase', transition: 'color 0.15s',
+                background: 'none',
+                border: 'none',
+                color: 'var(--text-muted)',
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: '0.08em',
+                cursor: 'pointer',
+                padding: '2px 8px',
+                borderRadius: 3,
+                textTransform: 'uppercase',
+                transition: 'color 0.15s',
               }}
               onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
               onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
@@ -271,11 +404,7 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
       </div>
 
       {/* ── Status Bar ────────────────────────────────────────────────────── */}
-      <StatusBar
-        tabRole={tabRole}
-        isConnected={isConnected}
-        cursorPos={cursorPos}
-      />
+      <StatusBar tabRole={tabRole} isConnected={isConnected} cursorPos={cursorPos} />
     </div>
   );
 }

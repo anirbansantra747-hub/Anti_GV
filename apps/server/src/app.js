@@ -29,7 +29,10 @@ app.get('/health', (_req, res) => {
 
 // Routes
 import ragRoutes from './routes/rag.js';
+import fsRoutes from './routes/fs.js';
+
 app.use('/api/rag', ragRoutes);
+app.use('/api/fs', fsRoutes);
 
 // Socket.io
 io.on('connection', (socket) => {
