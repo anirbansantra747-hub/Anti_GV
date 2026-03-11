@@ -67,7 +67,7 @@ export default function Terminal() {
         </span>
         <br />
         <span style={{ display: 'inline-block', marginTop: 8, color: '#1e293b' }}>
-          ─── Powered by WebContainers · Pyodide · Judge0 CE ───
+          ─── Powered by WebContainers · Pyodide · Piston ───
         </span>
       </div>
     </div>

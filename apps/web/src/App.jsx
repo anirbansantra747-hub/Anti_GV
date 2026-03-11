@@ -4,7 +4,7 @@ import FileTree from './components/FileTree/FileTree';
 import MonacoEditor from './components/Editor/MonacoEditor';
 import TabBar from './components/Editor/TabBar';
 import AIPanel from './components/AIPanel/AIPanel';
-import Terminal from './components/Terminal/Terminal';
+import Terminal from './components/Terminal/TerminalPane';
 import Topbar from './components/Topbar/Topbar';
 import StatusBar from './components/StatusBar/StatusBar';
 import QuickOpen from './components/QuickOpen/QuickOpen';
