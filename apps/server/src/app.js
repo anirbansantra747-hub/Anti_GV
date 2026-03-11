@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import { setupAgentSocket } from './sockets/agentSocket.js';
 import { setupFsSocket } from './sockets/fsSocket.js';
 import { setupTerminalSocket } from './sockets/terminalSocket.js';
+import { setupExecutionSocket } from './sockets/executionSocket.js';
 
 dotenv.config();
 
@@ -46,6 +47,7 @@ io.on('connection', (socket) => {
   setupAgentSocket(io, socket);
   setupFsSocket(io, socket);
   setupTerminalSocket(io, socket);
+  setupExecutionSocket(io, socket);
 });
 
 // Start
