@@ -1,4 +1,3 @@
-/* eslint-disable no-unused-vars */
 /**
  * @file contextService.js
  * @description Builds a focused context window of source code for the LLM Agent.
