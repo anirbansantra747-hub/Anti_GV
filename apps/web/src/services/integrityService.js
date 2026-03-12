@@ -1,4 +1,3 @@
-/* eslint-disable no-unused-vars */
 /**
  * @file integrityService.js
  * @description Periodic Merkle integrity checker for the V3 Workspace Runtime.

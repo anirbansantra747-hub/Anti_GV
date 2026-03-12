@@ -5,9 +5,22 @@
  *
  * Piston is a free, open-source code execution service: https://github.com/engineer-man/piston
  * Public instance: https://emkc.org/api/v2/piston
+ *
+ * Events emitted:
+ *   exec:output   — { stream: 'info'|'stdout'|'stderr', text: string }
+ *   exec:done     — { exitCode, runTime, summary }
+ *   exec:problems — { markers: ErrorMarker[] }  ← NEW: structured error markers
  */
 
-const PISTON_API = 'https://emkc.org/api/v2/piston';
+import { parseErrors } from '../services/execution/errorParser.js';
+import { resolveLanguage } from '../services/execution/languageMap.js';
+import dotenv from 'dotenv';
+dotenv.config();
+
+// Default to public API if no local container URL is configured
+const PISTON_API = process.env.PISTON_URL
+  ? `${process.env.PISTON_URL}/api/v2`
+  : 'https://emkc.org/api/v2/piston';
 
 /**
  * Get available runtimes from Piston (cached per server start).
@@ -38,9 +51,10 @@ async function getLatestVersion(language) {
  * @param {string} language - Piston language name (e.g., "c++", "java")
  * @param {string} code - Source code
  * @param {string} [filename] - Filename hint (e.g., "Main.java")
+ * @param {string} [stdin]    - Optional stdin string to pass to the program
  * @returns {Promise<{stdout: string, stderr: string, exitCode: number, runTime: number}>}
  */
-async function runWithPiston(language, code, filename) {
+async function runWithPiston(language, code, filename, stdin = '') {
   const version = await getLatestVersion(language);
   if (!version) {
     throw new Error(`No Piston runtime found for language: "${language}"`);
@@ -54,7 +68,7 @@ async function runWithPiston(language, code, filename) {
       language,
       version,
       files: [{ name: filename || `code.${language}`, content: code }],
-      stdin: '',
+      stdin: stdin || '',
       args: [],
       compile_timeout: 10000,
       run_timeout: 10000,
@@ -83,17 +97,31 @@ async function runWithPiston(language, code, filename) {
  * @param {import('socket.io').Socket} socket
  */
 export function setupExecutionSocket(_io, socket) {
-  socket.on('exec:run', async ({ code, language, filename }) => {
+  /**
+   * exec:run — Run code via Piston.
+   * Payload: { code: string, language: string, filename?: string, stdin?: string }
+   */
+  socket.on('exec:run', async ({ code, language, filename, stdin }) => {
     console.log(`[ExecutionSocket] Running ${language} via Piston for ${socket.id}`);
+
+    // Resolve language metadata (error style, display name, default filename)
+    const langInfo = filename ? resolveLanguage(filename) : resolveLanguage(language);
 
     // Let the client know we're starting
     socket.emit('exec:output', {
       stream: 'info',
-      text: `▶ Running ${language} via Piston...\r\n`,
+      text: `▶ Running ${langInfo?.display || language} via Piston...\r\n`,
     });
 
     try {
-      const { stdout, stderr, exitCode, runTime } = await runWithPiston(language, code, filename);
+      const effectiveFilename = filename || langInfo?.fileTemplate || `code.${language}`;
+
+      const { stdout, stderr, exitCode, runTime } = await runWithPiston(
+        language,
+        code,
+        effectiveFilename,
+        stdin || ''
+      );
 
       if (stdout) {
         socket.emit('exec:output', { stream: 'stdout', text: stdout.replace(/\n/g, '\r\n') });
@@ -103,6 +131,19 @@ export function setupExecutionSocket(_io, socket) {
           stream: 'stderr',
           text: `\x1b[31m${stderr.replace(/\n/g, '\r\n')}\x1b[0m`,
         });
+      }
+
+      // ── Error parsing → emit structured markers ───────────────
+      if (stderr && stderr.trim()) {
+        const errorStyle = langInfo?.errorStyle || 'generic';
+        const markers = parseErrors(stderr, errorStyle);
+        if (markers.length > 0) {
+          socket.emit('exec:problems', { markers });
+          console.log(`[ExecutionSocket] Emitting ${markers.length} problem marker(s)`);
+        }
+      } else {
+        // Clear any previous problems when run is clean
+        socket.emit('exec:problems', { markers: [] });
       }
 
       const statusColor = exitCode === 0 ? '\x1b[32m' : '\x1b[31m';

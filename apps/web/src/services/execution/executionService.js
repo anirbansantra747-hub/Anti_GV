@@ -14,14 +14,15 @@ import { runInPyodide } from './pyodideRunner.js';
 /**
  * Execute code for a given file.
  * @param {object} params
- * @param {string} params.code - Source code to execute.
- * @param {string} params.filename - Filename (e.g., "main.py", "index.js"). Used for language detection.
- * @param {object} params.socket - Socket.IO client instance (used for Piston requests).
- * @param {function(string): void} params.onOutput - Stream output callback (writes to xterm).
- * @param {function(number): void} [params.onExit] - Called with exit code when done.
+ * @param {string} params.code       - Source code to execute.
+ * @param {string} params.filename   - Filename (e.g., "main.py", "index.js"). Used for language detection.
+ * @param {object} params.socket     - Socket.IO client instance (used for Piston requests).
+ * @param {string} [params.stdin]    - Optional stdin string to feed into the program.
+ * @param {function(string): void} params.onOutput   - Stream output callback (writes to xterm).
+ * @param {function(number): void} [params.onExit]   - Called with exit code when done.
  * @returns {Promise<void>}
  */
-export async function executeCode({ code, filename, socket, onOutput, onExit }) {
+export async function executeCode({ code, filename, socket, stdin = '', onOutput, onExit }) {
   const info = detectLanguage(filename);
 
   if (!info) {
@@ -38,7 +39,7 @@ export async function executeCode({ code, filename, socket, onOutput, onExit }) 
       break;
 
     case 'pyodide':
-      await runInPyodide(code, onOutput, onExit);
+      await runInPyodide(code, onOutput, onExit, stdin);
       break;
 
     case 'piston':
@@ -47,9 +48,14 @@ export async function executeCode({ code, filename, socket, onOutput, onExit }) 
         if (onExit) onExit(1);
         return;
       }
-      // Delegate to backend via socket
-      socket.emit('exec:run', { code, language: info.pistonLang, filename });
-      // Output will be streamed via 'exec:output' and 'exec:done' events
+      // Delegate to backend via socket.
+      // Output will be streamed via 'exec:output', 'exec:done', and 'exec:problems' events.
+      socket.emit('exec:run', {
+        code,
+        language: info.pistonLang,
+        filename,
+        stdin: stdin || '',
+      });
       break;
 
     default:

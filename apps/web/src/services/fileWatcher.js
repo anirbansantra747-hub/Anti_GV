@@ -1,4 +1,3 @@
-/* eslint-disable no-unused-vars */
 /**
  * @file fileWatcher.js
  * @description Hash-diffed file change watcher for external module subscribers (RAG, etc.).

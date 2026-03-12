@@ -1,87 +1,91 @@
 /**
  * @file vectorStore.js
- * @description ChromaDB vector store adapter.
+ * @description Pinecone vector store adapter for RAG.
  *
- * Connects to the ChromaDB instance running in Docker (lexi_chromadb, port 8000).
- * Provides upsert, query, and deleteByFile operations.
+ * Connects to the Pinecone index specified by PINECONE_API_KEY.
+ * Provides upsert, query, and deleteByFile operations, ensuring compatibility
+ * with the original ChromaDB interfaces used by the orchestrator.
  */
 
-import { ChromaClient } from 'chromadb';
+import { Pinecone } from '@pinecone-database/pinecone';
+import dotenv from 'dotenv';
+dotenv.config();
 
-const CHROMA_HOST = process.env.CHROMA_HOST || 'http://localhost:8000';
-const COLLECTION_NAME = 'antigv_codebase';
+const INDEX_NAME = 'antigv-codebase';
 
-let client = null;
-let collection = null;
+let pineconeClient = null;
+let pineconeIndex = null;
 
 /**
- * Initialize connection to ChromaDB and get/create the collection.
+ * Initialize connection to Pinecone and get the index.
  */
 async function ensureCollection() {
-  if (collection) return collection;
+  if (pineconeIndex) return pineconeIndex;
 
-  client = new ChromaClient({ path: CHROMA_HOST });
+  const apiKey = process.env.PINECONE_API_KEY;
+  if (!apiKey) {
+    throw new Error('PINECONE_API_KEY is not set in environment variables');
+  }
 
-  // Dummy embedding function since we compute embeddings via Pinecone before passing to ChromaDB
-  const dummyEmbeddingFunction = {
-    generate: (texts) => new Array(texts.length).fill([]),
-  };
+  pineconeClient = new Pinecone({ apiKey });
 
-  // Get or create the collection
-  collection = await client.getOrCreateCollection({
-    name: COLLECTION_NAME,
-    embeddingFunction: dummyEmbeddingFunction,
-    metadata: {
-      description: 'Anti_GV codebase semantic chunks',
-      'hnsw:space': 'cosine',
-    },
-  });
+  // Optional: Auto-create the index if it doesn't exist (Only works if user has available quota)
+  // For production, it's safer to just assume the index is created, or catch the error.
+  try {
+    const list = await pineconeClient.listIndexes();
+    const exists = list.indexes?.find((i) => i.name === INDEX_NAME);
+    if (!exists) {
+      console.log(`[VectorStore] Creating Pinecone index: ${INDEX_NAME}...`);
+      await pineconeClient.createIndex({
+        name: INDEX_NAME,
+        dimension: 1024, // Matching llama-text-embed-v2 out of embedder.js
+        metric: 'cosine',
+        spec: {
+          serverless: { cloud: 'aws', region: 'us-east-1' },
+        },
+      });
+      // Wait for initialization
+      await new Promise((res) => setTimeout(res, 5000));
+    }
+  } catch (err) {
+    console.warn('[VectorStore] Index configuration warning:', err.message);
+  }
 
-  console.log(`[VectorStore] Connected to ChromaDB collection: ${COLLECTION_NAME}`);
-  return collection;
+  pineconeIndex = pineconeClient.index(INDEX_NAME);
+  console.log(`[VectorStore] Connected to Pinecone index: ${INDEX_NAME}`);
+  return pineconeIndex;
 }
 
 /**
- * Upsert an array of embedded chunks into ChromaDB.
- * @param {Array<{
- *   filePath: string,
- *   chunkType: string,
- *   name: string,
- *   startLine: number,
- *   endLine: number,
- *   content: string,
- *   hash: string,
- *   embedding: number[]
- * }>} embeddedChunks
+ * Upsert an array of embedded chunks into Pinecone.
+ * Pinecone expects { id, values, metadata }.
+ * We store the chunk `content` directly in `metadata` (limit ~40KB per vector).
  */
 export async function upsert(embeddedChunks) {
   if (embeddedChunks.length === 0) return;
 
-  const col = await ensureCollection();
+  const index = await ensureCollection();
 
-  // ChromaDB batch limit is typically around 5461, we'll batch at 100 for safety
+  // Pinecone batch limit is typically ~100-250
   const BATCH = 100;
   for (let i = 0; i < embeddedChunks.length; i += BATCH) {
     const batch = embeddedChunks.slice(i, i + BATCH);
 
-    const ids = batch.map((c) => generateId(c));
-    const embeddings = batch.map((c) => c.embedding);
-    const documents = batch.map((c) => c.content);
-    const metadatas = batch.map((c) => ({
-      filePath: c.filePath,
-      chunkType: c.chunkType,
-      name: c.name,
-      startLine: c.startLine,
-      endLine: c.endLine,
-      hash: c.hash,
+    const vectors = batch.map((c) => ({
+      id: generateId(c),
+      values: c.embedding,
+      metadata: {
+        filePath: c.filePath,
+        chunkType: c.chunkType,
+        name: c.name,
+        startLine: c.startLine,
+        endLine: c.endLine,
+        hash: c.hash,
+        content: c.content, // Crucial: Store text in metadata
+      },
     }));
 
-    await col.upsert({
-      ids,
-      embeddings,
-      documents,
-      metadatas,
-    });
+    await index.upsert(vectors);
 
     console.log(
       `[VectorStore] Upserted batch ${Math.floor(i / BATCH) + 1} (${batch.length} chunks)`
@@ -91,51 +95,46 @@ export async function upsert(embeddedChunks) {
 
 /**
  * Query the vector store for chunks relevant to a text query.
- * @param {number[]} queryEmbedding - The query vector
- * @param {number} topK - Number of results to return
- * @param {Object} [whereFilter] - Optional ChromaDB where filter
- * @returns {Promise<Array<{
- *   id: string,
- *   content: string,
- *   metadata: Object,
- *   distance: number
- * }>>}
+ * Expects the exact return format required by `contextAssembler.js`.
  */
 export async function query(queryEmbedding, topK = 10, whereFilter = undefined) {
-  const col = await ensureCollection();
+  const index = await ensureCollection();
 
-  const results = await col.query({
-    queryEmbeddings: [queryEmbedding],
-    nResults: topK,
-    where: whereFilter,
-    include: ['documents', 'metadatas', 'distances'],
+  const results = await index.query({
+    vector: queryEmbedding,
+    topK: topK,
+    filter: whereFilter,
+    includeMetadata: true,
   });
 
-  if (!results.ids || results.ids.length === 0) return [];
+  if (!results.matches || results.matches.length === 0) return [];
 
-  return results.ids[0].map((id, i) => ({
-    id,
-    content: results.documents[0][i],
-    metadata: results.metadatas[0][i],
-    distance: results.distances[0][i],
+  return results.matches.map((match) => ({
+    id: match.id,
+    content: match.metadata.content,
+    metadata: {
+      filePath: match.metadata.filePath,
+      chunkType: match.metadata.chunkType,
+      name: match.metadata.name,
+      startLine: match.metadata.startLine,
+      endLine: match.metadata.endLine,
+      hash: match.metadata.hash,
+    },
+    distance: 1 - (match.score || 1), // Convert cosine similarity score to roughly a 'distance' metric if needed
   }));
 }
 
 /**
- * Delete all chunks belonging to a specific file.
- * Used for incremental re-indexing when a file changes.
- * @param {string} filePath
+ * Delete all chunks belonging to a specific file using metadata filters.
  */
 export async function deleteByFile(filePath) {
-  const col = await ensureCollection();
+  const index = await ensureCollection();
 
   try {
-    await col.delete({
-      where: { filePath },
-    });
+    // Note: Pinecone Serverless supports deleteMany with a filter
+    await index.deleteMany({ filePath });
     console.log(`[VectorStore] Deleted all chunks for: ${filePath}`);
   } catch (err) {
-    // ChromaDB may throw if no matching chunks exist — that's fine
     console.warn(`[VectorStore] Delete warning for ${filePath}: ${err.message}`);
   }
 }
@@ -144,8 +143,9 @@ export async function deleteByFile(filePath) {
  * Get the count of all stored chunks.
  */
 export async function getCount() {
-  const col = await ensureCollection();
-  return await col.count();
+  const index = await ensureCollection();
+  const stats = await index.describeIndexStats();
+  return stats.totalRecordCount || 0;
 }
 
 /**
@@ -154,19 +154,30 @@ export async function getCount() {
  * @returns {Promise<Map<string, string>>} Map of chunkName → hash
  */
 export async function getHashesForFile(filePath) {
-  const col = await ensureCollection();
-
-  const results = await col.get({
-    where: { filePath },
-    include: ['metadatas'],
-  });
-
+  const index = await ensureCollection();
   const hashMap = new Map();
-  if (results.metadatas) {
-    for (const meta of results.metadatas) {
-      hashMap.set(meta.name, meta.hash);
+
+  // Pinecone doesn't have a simple 'SELECT * WHERE metadata=' like SQL.
+  // A hacky way to do this in Pinecone is to query with a dummy embedding
+  // and the filter, asking for high topK. This is an approximation.
+  try {
+    const dummyVector = new Array(1024).fill(0);
+    const results = await index.query({
+      vector: dummyVector,
+      topK: 1000,
+      filter: { filePath },
+      includeMetadata: true,
+    });
+
+    for (const match of results.matches) {
+      if (match.metadata && match.metadata.name && match.metadata.hash) {
+        hashMap.set(match.metadata.name, match.metadata.hash);
+      }
     }
+  } catch (err) {
+    console.warn(`[VectorStore] getHashesForFile warning: ${err.message}`);
   }
+
   return hashMap;
 }
 
