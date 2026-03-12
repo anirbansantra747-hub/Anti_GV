@@ -1,4 +1,3 @@
-/* eslint-disable no-unused-vars */
 /**
  * @file modulePermissions.js
  * @description Static registry declaring what each module is allowed to do on the filesystem.

@@ -1,4 +1,3 @@
-/* eslint-disable no-unused-vars */
 /**
  * @file fsErrors.js
  * @description Typed error taxonomy for the V3 File System.
