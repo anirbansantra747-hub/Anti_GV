@@ -9,6 +9,11 @@ import { Save, CheckCircle, XCircle, Loader, Zap, History, Menu } from 'lucide-r
 import { useFileSystemStore } from '../../stores/fileSystemStore.js';
 import { useAgentStore } from '../../stores/agentStore.js';
 import { remoteSync } from '../../services/remoteSync.js';
+import {
+  openDirectoryViaFSA,
+  openFilesViaInput,
+  supportsDirectoryPicker,
+} from '../../services/localFileService.js';
 
 const HistoryDrawer = lazy(() => import('../History/HistoryDrawer.jsx'));
 
@@ -171,7 +176,20 @@ export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false }
               }}
             >
               {[
-                { label: '📂  Open Folder…', action: () => socket?.emit('fs:pick_folder') },
+                {
+                  label: '📂  Open Folder…',
+                  action: () => {
+                    if (supportsDirectoryPicker) {
+                      openDirectoryViaFSA().catch((err) =>
+                        console.error('[Topbar] Open Folder Error:', err)
+                      );
+                    } else {
+                      openFilesViaInput({ directory: true }).catch((err) =>
+                        console.error('[Topbar] Open Folder Error:', err)
+                      );
+                    }
+                  },
+                },
                 { divider: true },
                 { label: '💾  Save', action: () => handleSave(), kbd: 'Ctrl+S' },
               ].map((item, i) =>

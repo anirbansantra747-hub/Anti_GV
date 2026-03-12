@@ -8,7 +8,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Send, Cpu, Check, X, Orbit, Eye } from 'lucide-react';
 import { useAgentStore } from '../../stores/agentStore';
 import { DiffViewer } from '../Editor/DiffViewer';
-import { diffService } from '../../services/diffService';
+import { diffService } from '../../services/diffService.js';
 
 export default function AIPanel() {
   const {
