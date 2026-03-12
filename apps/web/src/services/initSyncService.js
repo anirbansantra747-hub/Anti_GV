@@ -2,6 +2,7 @@ import { memfs } from './memfsService.js';
 import { snapshotStore } from './snapshotService.js';
 import { bus, Events } from './eventBus.js';
 import { blobStore } from './blobStore.js';
+import { loadFromIDB } from './persistenceService.js';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -11,6 +12,14 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
  */
 export async function syncRealDiskToMemfs() {
   try {
+    const isHydrated = await loadFromIDB();
+    if (isHydrated) {
+      const rootHash = await snapshotStore.computeDirHash(memfs.workspace.root);
+      memfs.workspace.version = rootHash;
+      console.log(`[InitSync] Hydrated memfs from IDB. Root hash = ${rootHash.slice(0, 8)}`);
+      return true;
+    }
+
     const res = await fetch(`${API_URL}/api/fs/list?path=.`);
     if (!res.ok) throw new Error('Failed to fetch fs list');
 

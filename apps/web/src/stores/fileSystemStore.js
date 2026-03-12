@@ -1,4 +1,3 @@
-/* eslint-disable no-unused-vars */
 /**
  * @file fileSystemStore.js
  * @description React/Zustand reactive view of the Tier 1 In-Memory Map.
@@ -34,8 +33,8 @@ export const useFileSystemStore = create((set) => ({
   treeData: [serializeTree(memfs.workspace.root)],
 
   // Workspace Meta (driven by V3 state machine via fsSubscriptions)
-  workspaceId:      memfs.workspace.id,
-  workspaceState:   memfs.workspace.state,   // 'IDLE' | 'AI_PENDING' | 'DIFF_REVIEW' | 'COMMITTING' | 'CONFLICT' | 'ERROR'
+  workspaceId: memfs.workspace.id,
+  workspaceState: memfs.workspace.state, // 'IDLE' | 'AI_PENDING' | 'DIFF_REVIEW' | 'COMMITTING' | 'CONFLICT' | 'ERROR'
   workspaceVersion: memfs.workspace.version, // rootTreeHash (Merkle)
 
   // Error states
@@ -45,8 +44,8 @@ export const useFileSystemStore = create((set) => ({
   // Sync snapshot from memfs into store
   syncFromMemfs: () => {
     set({
-      treeData:         [serializeTree(memfs.workspace.root)],
-      workspaceState:   memfs.workspace.state,
+      treeData: [serializeTree(memfs.workspace.root)],
+      workspaceState: memfs.workspace.state,
       workspaceVersion: memfs.workspace.version,
     });
   },

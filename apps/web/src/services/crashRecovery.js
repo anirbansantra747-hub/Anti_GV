@@ -1,4 +1,3 @@
-/* eslint-disable no-unused-vars */
 /**
  * @file crashRecovery.js
  * @description Crash Recovery logic for the V3 Workspace Runtime.

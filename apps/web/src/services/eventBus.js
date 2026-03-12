@@ -1,4 +1,3 @@
-/* eslint-disable no-unused-vars */
 /**
  * @file eventBus.js
  * @description Lightweight unidirectional internal Pub/Sub event bus.
@@ -196,4 +195,3 @@ class EventBus {
 
 // Export a singleton — everyone imports the same bus instance.
 export const bus = new EventBus();
-
