@@ -1,4 +1,3 @@
-/* eslint-disable no-unused-vars */
 /**
  * @file remoteSync.js
  * @description Tier 3 differential remote sync.
