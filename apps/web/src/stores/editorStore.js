@@ -22,7 +22,21 @@ export const useEditorStore = create((set, get) => ({
   /** @type {string[]} Paths edited in the last 5 minutes */
   recentlyEdited: [],
 
+  /**
+   * @type {{ line: number, column: number, selected: string }}
+   * Current cursor position in Monaco Editor — updated on every cursor move.
+   */
+  cursorPosition: { line: 1, column: 1, selected: '' },
+
   // ── Actions ─────────────────────────────────────────────────────────────
+
+  /**
+   * Update cursor position. Called by Monaco's onDidChangeCursorPosition.
+   * @param {{ line: number, column: number, selected?: string }} pos
+   */
+  setCursor({ line, column, selected = '' }) {
+    set({ cursorPosition: { line, column, selected } });
+  },
 
   /** Open a file tab. Sets it as active. */
   openFile(path) {
