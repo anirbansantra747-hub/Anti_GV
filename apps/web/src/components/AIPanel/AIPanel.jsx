@@ -56,13 +56,14 @@ export default function AIPanel() {
     >
       {/* Header */}
       <div
+        className="glass-header"
         style={{
           padding: '14px 20px',
-          borderBottom: '1px solid var(--panel-border)',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          background: 'rgba(255,255,255,0.02)',
+          background: 'var(--panel-bg)',
+          borderBottom: '1px solid var(--panel-border)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -159,20 +160,26 @@ export default function AIPanel() {
           >
             <div
               style={{
-                background: msg.role === 'user' ? 'var(--accent)' : 'rgba(255,255,255,0.04)',
-                color: msg.role === 'user' ? '#030712' : 'var(--text-primary)',
+                background: msg.role === 'user' ? 'var(--accent)' : 'var(--app-bg)',
+                color: msg.role === 'user' ? '#000000' : 'var(--text-primary)',
                 padding: '12px 16px',
-                borderRadius: msg.role === 'user' ? '16px 16px 4px 16px' : '4px 16px 16px 16px',
+                borderRadius: 0,
                 maxWidth: '90%',
                 wordBreak: 'break-word',
                 fontSize: 13.5,
                 lineHeight: 1.6,
-                border: msg.role === 'user' ? 'none' : '1px solid var(--panel-border)',
-                boxShadow: msg.role === 'user' ? '0 4px 12px var(--accent-glow)' : 'none',
+                border:
+                  msg.role === 'user'
+                    ? '1px solid var(--accent-dim)'
+                    : '1px solid var(--panel-border)',
+                borderLeft:
+                  msg.role === 'user' ? '1px solid var(--accent-dim)' : '4px solid var(--accent)',
+                boxShadow: msg.role === 'user' ? '4px 4px 0px rgba(0,0,0,1)' : 'none',
                 ...(msg.type === 'error' && {
-                  color: '#f87171',
-                  border: '1px solid #ef444444',
-                  background: '#ef444411',
+                  color: 'var(--red)',
+                  border: '1px solid var(--red)',
+                  borderLeft: '4px solid var(--red)',
+                  background: 'var(--app-bg)',
                 }),
               }}
             >
@@ -375,9 +382,10 @@ export default function AIPanel() {
       {/* Input Area */}
       <div
         style={{
-          padding: '20px',
+          padding: '16px 20px',
           borderTop: '1px solid var(--panel-border)',
-          background: 'rgba(255,255,255,0.01)',
+          borderBottom: 'none',
+          background: 'var(--panel-bg)',
         }}
       >
         <form
@@ -385,14 +393,18 @@ export default function AIPanel() {
           style={{
             display: 'flex',
             gap: 10,
-            background: 'rgba(0,0,0,0.3)',
+            background: 'var(--app-bg)',
             border: '1px solid var(--panel-border)',
-            borderRadius: 12,
-            padding: 8,
-            transition: 'border-color 0.2s',
+            borderRadius: 0,
+            padding: '8px 8px 8px 16px',
+            transition: 'border-color 0s, box-shadow 0s',
           }}
-          onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
-          onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--panel-border)')}
+          onFocus={(e) => {
+            e.currentTarget.style.borderColor = 'var(--accent)';
+          }}
+          onBlur={(e) => {
+            e.currentTarget.style.borderColor = 'var(--panel-border)';
+          }}
         >
           <input
             type="text"
@@ -416,26 +428,22 @@ export default function AIPanel() {
             style={{
               background:
                 isThinking || !inputMsg.trim() || !isConnected
-                  ? 'rgba(255,255,255,0.05)'
+                  ? 'var(--panel-border)'
                   : 'var(--accent)',
               color:
-                isThinking || !inputMsg.trim() || !isConnected ? 'var(--text-muted)' : '#030712',
+                isThinking || !inputMsg.trim() || !isConnected ? 'var(--text-muted)' : '#000000',
               border: 'none',
-              borderRadius: 8,
-              width: 32,
-              height: 32,
+              borderRadius: 0,
+              width: 36,
+              height: 36,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               cursor: isThinking || !inputMsg.trim() || !isConnected ? 'not-allowed' : 'pointer',
-              transition: 'all 0.2s',
-              boxShadow:
-                !isThinking && inputMsg.trim() && isConnected
-                  ? '0 4px 12px var(--accent-glow)'
-                  : 'none',
+              transition: 'background 0.1s',
             }}
           >
-            <Send size={15} strokeWidth={2.5} style={{ transform: 'translateX(1px)' }} />
+            <Send size={16} strokeWidth={3} style={{ transform: 'translateX(1px)' }} />
           </button>
         </form>
       </div>

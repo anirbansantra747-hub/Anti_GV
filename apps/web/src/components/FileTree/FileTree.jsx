@@ -103,10 +103,9 @@ export default function FileTree() {
         flexDirection: 'column',
         height: '100%',
         overflow: 'hidden',
-        background: '#111927',
-        borderRight: '1px solid #2d3f5b',
+        background: 'var(--app-bg)',
         position: 'relative',
-        outline: isDragOver ? '2px dashed #22d3ee' : 'none',
+        outline: isDragOver ? '2px dashed var(--accent)' : 'none',
         outlineOffset: -2,
         transition: 'outline-color 0.15s',
       }}
@@ -122,13 +121,13 @@ export default function FileTree() {
           fontWeight: 700,
           letterSpacing: '0.1em',
           textTransform: 'uppercase',
-          color: '#c8d6e5',
-          borderBottom: '1px solid #2d3f5b',
+          color: 'var(--text-muted)',
+          borderBottom: '1px solid var(--panel-border)',
           flexShrink: 0,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          background: '#0e1525',
+          background: 'var(--panel-bg)',
         }}
       >
         <span>Explorer</span>
@@ -144,16 +143,16 @@ export default function FileTree() {
           {/* Search bar */}
           <div
             style={{
-              padding: '6px 8px',
-              borderBottom: '1px solid #2d3f5b',
+              padding: '8px',
+              borderBottom: '1px solid var(--panel-border)',
               flexShrink: 0,
               display: 'flex',
               alignItems: 'center',
               gap: 6,
-              background: 'rgba(0,0,0,0.15)',
+              background: 'transparent',
             }}
           >
-            <Search size={12} color="#64748b" strokeWidth={2} style={{ flexShrink: 0 }} />
+            <Search size={12} color="var(--text-muted)" strokeWidth={2} style={{ flexShrink: 0 }} />
             <input
               type="search"
               value={searchQuery}
@@ -164,7 +163,7 @@ export default function FileTree() {
                 background: 'none',
                 border: 'none',
                 outline: 'none',
-                color: '#c8d6e5',
+                color: 'var(--text-primary)',
                 fontSize: 12,
                 fontFamily: 'var(--font-ui)',
               }}
@@ -177,7 +176,7 @@ export default function FileTree() {
                   border: 'none',
                   cursor: 'pointer',
                   padding: 2,
-                  color: '#475569',
+                  color: 'var(--text-secondary)',
                 }}
               >
                 <X size={11} strokeWidth={2} />
