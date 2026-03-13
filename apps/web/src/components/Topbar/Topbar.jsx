@@ -9,16 +9,21 @@ import { Save, CheckCircle, XCircle, Loader, Zap, History, Menu } from 'lucide-r
 import { useFileSystemStore } from '../../stores/fileSystemStore.js';
 import { useAgentStore } from '../../stores/agentStore.js';
 import { remoteSync } from '../../services/remoteSync.js';
+import {
+  openDirectoryViaFSA,
+  openFilesViaInput,
+  supportsDirectoryPicker,
+} from '../../services/localFileService.js';
 
 const HistoryDrawer = lazy(() => import('../History/HistoryDrawer.jsx'));
 
 const STATE_CONFIG = {
-  IDLE: { color: '#22c55e', label: 'IDLE' },
-  AI_PENDING: { color: '#f59e0b', label: 'AI PENDING' },
+  IDLE: { color: 'var(--green)', label: 'IDLE' },
+  AI_PENDING: { color: 'var(--amber)', label: 'AI PENDING' },
   DIFF_REVIEW: { color: '#3b82f6', label: 'DIFF REVIEW' },
-  COMMITTING: { color: '#a855f7', label: 'COMMITTING' },
-  CONFLICT: { color: '#ef4444', label: 'CONFLICT' },
-  ERROR: { color: '#ef4444', label: 'ERROR' },
+  COMMITTING: { color: 'var(--purple)', label: 'COMMITTING' },
+  CONFLICT: { color: 'var(--red)', label: 'CONFLICT' },
+  ERROR: { color: 'var(--red)', label: 'ERROR' },
 };
 
 function StateBadge({ state }) {
@@ -113,13 +118,13 @@ export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false }
       `}</style>
 
       <div
+        className="glass-header"
         style={{
           height: 56,
           display: 'flex',
           alignItems: 'center',
           padding: '0 20px',
           gap: 16,
-          background: 'transparent', // Let app background show through
           flexShrink: 0,
           zIndex: 20,
         }}
@@ -130,24 +135,24 @@ export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false }
             onClick={() => setShowFileMenu((v) => !v)}
             title="File menu"
             style={{
-              background: showFileMenu ? 'rgba(255,255,255,0.08)' : 'transparent',
-              border: 'none',
-              color: '#94a3b8',
+              background: showFileMenu ? 'var(--panel-bg)' : 'transparent',
+              border: showFileMenu ? '1px solid var(--panel-border)' : '1px solid transparent',
+              color: 'var(--text-primary)',
               cursor: 'pointer',
               padding: '6px 8px',
-              borderRadius: 6,
+              borderRadius: 0,
               display: 'flex',
               alignItems: 'center',
-              transition: 'background 0.1s, color 0.1s',
+              transition: 'background 0.1s, border-color 0.1s',
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
-              e.currentTarget.style.color = '#e2e8f0';
+              e.currentTarget.style.background = 'var(--panel-bg)';
+              e.currentTarget.style.borderColor = 'var(--panel-border)';
             }}
             onMouseLeave={(e) => {
               if (!showFileMenu) {
                 e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = '#94a3b8';
+                e.currentTarget.style.borderColor = 'transparent';
               }
             }}
           >
@@ -171,7 +176,20 @@ export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false }
               }}
             >
               {[
-                { label: '📂  Open Folder…', action: () => socket?.emit('fs:pick_folder') },
+                {
+                  label: '📂  Open Folder…',
+                  action: () => {
+                    if (supportsDirectoryPicker) {
+                      openDirectoryViaFSA().catch((err) =>
+                        console.error('[Topbar] Open Folder Error:', err)
+                      );
+                    } else {
+                      openFilesViaInput({ directory: true }).catch((err) =>
+                        console.error('[Topbar] Open Folder Error:', err)
+                      );
+                    }
+                  },
+                },
                 { divider: true },
                 { label: '💾  Save', action: () => handleSave(), kbd: 'Ctrl+S' },
               ].map((item, i) =>
@@ -212,30 +230,29 @@ export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false }
           )}
         </div>
 
-        {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginRight: 8 }}>
+        {/* Logo (Brutalist) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginRight: 16 }}>
           <div
             style={{
-              width: 30,
-              height: 30,
-              borderRadius: 8,
-              background: 'linear-gradient(135deg, var(--accent) 0%, #818cf8 100%)',
+              width: 32,
+              height: 32,
+              background: 'var(--accent)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 4px 12px var(--accent-glow)',
+              border: '1px solid var(--accent-dim)',
+              boxShadow: '4px 4px 0px rgba(0,0,0,1)',
             }}
           >
-            <Zap size={16} color="#ffffff" strokeWidth={2.5} />
+            <Zap size={16} color="#000000" strokeWidth={3} />
           </div>
           <span
             style={{
-              fontWeight: 800,
+              fontWeight: 700,
               fontSize: 18,
-              letterSpacing: '-0.03em',
-              background: 'linear-gradient(120deg, #ffffff 30%, var(--accent) 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
+              letterSpacing: '-0.05em',
+              textTransform: 'uppercase',
+              color: 'var(--text-primary)',
             }}
           >
             Anti_GV

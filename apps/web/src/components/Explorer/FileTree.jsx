@@ -1,8 +1,12 @@
-/* eslint-disable no-unused-vars */
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAgentStore } from '../../stores/agentStore';
 import { useFileSystemStore } from '../../stores/fileSystemStore';
 import TreeNode from './TreeNode';
+import {
+  openDirectoryViaFSA,
+  openFilesViaInput,
+  supportsDirectoryPicker,
+} from '../../services/localFileService.js';
 
 export default function FileTree() {
   const socket = useAgentStore((state) => state.socket);
@@ -49,7 +53,17 @@ export default function FileTree() {
           Explorer
         </span>
         <button
-          onClick={() => socket.emit('fs:pick_folder')}
+          onClick={() => {
+            if (supportsDirectoryPicker) {
+              openDirectoryViaFSA().catch((err) =>
+                console.error('[FileTree] Open Folder Error:', err)
+              );
+            } else {
+              openFilesViaInput({ directory: true }).catch((err) =>
+                console.error('[FileTree] Open Folder Error:', err)
+              );
+            }
+          }}
           title="Open Folder from PC"
           style={{
             background: 'transparent',
