@@ -56,12 +56,31 @@ export default function MonacoEditor({ onContentLoad, onCursorPositionChange }) 
     ? getLanguageFromExtension(getBasename(activeFile)) || 'plaintext'
     : 'plaintext';
 
-  // Load file content when activeFile changes
+  // Load file content when activeFile changes. Wait for treeData to populate on initial load
+  // to prevent race conditions where we request a file before IDB hydration completes.
   useEffect(() => {
     if (!activeFile) return;
 
+    // Check if the file exists in treeData. If treeData is empty or doesn't have it, we might be still hydrating.
+    // However, if the file genuinely doesn't exist, we eventually need to clear it.
+    // As a simple heuristic, if treeData has only the root '/' or is empty, we delay the read.
+    const isHydrating =
+      !treeData ||
+      treeData.length === 0 ||
+      (treeData.length === 1 && treeData[0].children?.length === 0);
+
+    if (isHydrating && !contentCache.has(activeFile)) {
+      return; // Wait for IDB hydration
+    }
+
     if (contentCache.has(activeFile)) {
-      if (editorRef.current) editorRef.current.setValue(contentCache.get(activeFile));
+      if (editorRef.current) {
+        const currentVal = editorRef.current.getValue();
+        const cachedVal = contentCache.get(activeFile);
+        if (currentVal !== cachedVal) {
+          editorRef.current.setValue(cachedVal);
+        }
+      }
       return;
     }
 
@@ -70,18 +89,22 @@ export default function MonacoEditor({ onContentLoad, onCursorPositionChange }) 
       .then((content) => {
         contentCache.set(activeFile, content);
         if (editorRef.current && currentPathRef.current === activeFile) {
-          editorRef.current.setValue(content);
+          if (editorRef.current.getValue() !== content) {
+            editorRef.current.setValue(content);
+          }
         }
         onContentLoad?.(content);
       })
       .catch(() => {
-        // New file — start empty
+        // New file or genuinely missing — start empty
         contentCache.set(activeFile, '');
         if (editorRef.current && currentPathRef.current === activeFile) {
-          editorRef.current.setValue('');
+          if (editorRef.current.getValue() !== '') {
+            editorRef.current.setValue('');
+          }
         }
       });
-  }, [activeFile]);
+  }, [activeFile, treeData]);
 
   const handleEditorDidMount = useCallback(
     (editor, monaco) => {
@@ -102,7 +125,20 @@ export default function MonacoEditor({ onContentLoad, onCursorPositionChange }) 
 
       // Ctrl+S shortcut
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-        console.log('[MonacoEditor] Ctrl+S — IDB auto-save in progress.');
+        console.log('[MonacoEditor] Ctrl+S — Saving to real disk.');
+        const { activeFile, clearDirty } = useEditorStore.getState();
+        const { socket } = useAgentStore.getState();
+        if (!activeFile || !socket) return;
+
+        const currentVal = editor.getValue();
+        socket.emit('fs:write', { path: activeFile, content: currentVal }, (response) => {
+          if (!response?.success) {
+            console.error('[MonacoEditor] Save failed:', response?.error);
+          } else {
+            console.log(`[MonacoEditor] Successfully saved ${activeFile} to disk.`);
+            clearDirty(activeFile);
+          }
+        });
       });
 
       // Ctrl+W — close active tab
@@ -170,7 +206,9 @@ export default function MonacoEditor({ onContentLoad, onCursorPositionChange }) 
     // When file switches, reload the editor value
     if (editorRef.current && activeFile) {
       const cached = contentCache.get(activeFile);
-      if (cached !== undefined) editorRef.current.setValue(cached);
+      if (cached !== undefined && editorRef.current.getValue() !== cached) {
+        editorRef.current.setValue(cached);
+      }
     }
   }, [activeFile]);
 

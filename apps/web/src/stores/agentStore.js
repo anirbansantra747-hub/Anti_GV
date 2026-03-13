@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { io } from 'socket.io-client';
 import { contextService } from '../services/contextService.js'; // Teammate's context gatherer
+import { useEditorStore } from './editorStore.js';
 
 const SOCKET_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -67,7 +68,7 @@ export const useAgentStore = create((set, get) => {
         if (!currentTxId) {
           // Try to import diffService dynamically or safely
           try {
-            const { diffService } = await import('../services/diffService');
+            const { diffService } = await import('../services/diffService.js');
             currentTxId = diffService.beginTransaction();
             set({ activeTransactionId: currentTxId });
           } catch (e) {
@@ -79,7 +80,7 @@ export const useAgentStore = create((set, get) => {
           // 2. Parse the edits
           const parsedChunk = JSON.parse(payload.chunk);
           if (parsedChunk && parsedChunk.edits && currentTxId) {
-            const { diffService } = await import('../services/diffService');
+            const { diffService } = await import('../services/diffService.js');
 
             // Format the edits into the FilePatch shape expected by DiffService
             const rawPath = payload.file || 'unknown.js';
@@ -231,12 +232,17 @@ export const useAgentStore = create((set, get) => {
         console.log('  cursorPos    :', cursorPosition);
 
         // Build enriched context with ALL signals
-        const { contextString, includedFiles } = await contextService.buildContext({
-          activeFile,
-          openTabs,
-          userPrompt: prompt,
-          cursorPosition,
-        });
+        // const { contextString, includedFiles } = await contextService.buildContext({
+        //   activeFile,
+        //   openTabs,
+        // // Call teammate's service to get context
+        // const editorState = useEditorStore.getState();
+        // const { contextString } = await contextService.buildContext({
+        //   activeFile: editorState.activeFile,
+        //   openTabs: editorState.openTabs,
+        //   userPrompt: prompt,
+        //   cursorPosition,
+        // });
 
         console.log('  includedFiles:', includedFiles);
         console.log('  contextLen   :', contextString.length, 'chars');
@@ -302,7 +308,7 @@ export const useAgentStore = create((set, get) => {
       if (!txId) return;
 
       try {
-        const { diffService } = await import('../services/diffService');
+        const { diffService } = await import('../services/diffService.js');
         await diffService.commit(txId);
         set((state) => ({
           activeTransactionId: null,
@@ -337,7 +343,7 @@ export const useAgentStore = create((set, get) => {
       if (!txId) return;
 
       try {
-        const { diffService } = await import('../services/diffService');
+        const { diffService } = await import('../services/diffService.js');
         diffService.rollback(txId);
         set((state) => ({
           activeTransactionId: null,

@@ -3,6 +3,7 @@ import cors from 'cors';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import dotenv from 'dotenv';
+import { connectDB } from './services/db/dbService.js';
 import { setupAgentSocket } from './sockets/agentSocket.js';
 import { setupFsSocket } from './sockets/fsSocket.js';
 import { setupTerminalSocket } from './sockets/terminalSocket.js';
@@ -31,9 +32,11 @@ app.get('/health', (_req, res) => {
 // Routes
 import ragRoutes from './routes/rag.js';
 import fsRoutes from './routes/fs.js';
+import workspaceRoutes from './routes/workspace.js';
 
 app.use('/api/rag', ragRoutes);
 app.use('/api/fs', fsRoutes);
+app.use('/api/workspace', workspaceRoutes);
 
 // Socket.io
 io.on('connection', (socket) => {
@@ -52,6 +55,8 @@ io.on('connection', (socket) => {
 
 // Start
 const PORT = process.env.PORT || 3001;
-httpServer.listen(PORT, () => {
-  console.log(`🚀 Anti_GV server running on http://localhost:${PORT}`);
+connectDB().then(() => {
+  httpServer.listen(PORT, () => {
+    console.log(`🚀 Anti_GV server running on http://localhost:${PORT}`);
+  });
 });
