@@ -13,63 +13,82 @@ function getBasename(path) {
 }
 
 export default function TabBar() {
-  const openTabs    = useEditorStore((s) => s.openTabs);
-  const activeFile  = useEditorStore((s) => s.activeFile);
-  const dirtyFiles  = useEditorStore((s) => s.dirtyFiles);
-  const openFile    = useEditorStore((s) => s.openFile);
-  const closeTab    = useEditorStore((s) => s.closeTab);
+  const openTabs = useEditorStore((s) => s.openTabs);
+  const activeFile = useEditorStore((s) => s.activeFile);
+  const dirtyFiles = useEditorStore((s) => s.dirtyFiles);
+  const openFile = useEditorStore((s) => s.openFile);
+  const closeTab = useEditorStore((s) => s.closeTab);
 
   if (openTabs.length === 0) return null;
 
   return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'flex-end',
-      background: 'rgba(0,0,0,0.2)',
-      borderBottom: '1px solid var(--panel-border)',
-      overflowX: 'auto',
-      flexShrink: 0,
-      height: 40,
-      padding: '0 8px',
-      gap: 4,
-    }}>
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'flex-end',
+        background: 'rgba(11,12,16,0.5)',
+        borderBottom: '1px solid var(--panel-border)',
+        overflowX: 'auto',
+        flexShrink: 0,
+        height: 40,
+        padding: '0 8px',
+        gap: 4,
+      }}
+    >
       {openTabs.map((path) => {
         const isActive = path === activeFile;
-        const isDirty  = dirtyFiles.has(path);
-        const name     = getBasename(path);
+        const isDirty = dirtyFiles.has(path);
+        const name = getBasename(path);
         return (
           <div
             key={path}
             style={{
-              display: 'flex', alignItems: 'center', gap: 6,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
               padding: '0 14px',
               height: 34,
-              borderRadius: '8px 8px 0 0',
+              borderRadius: 0,
               background: isActive ? 'var(--panel-bg)' : 'transparent',
-              border: isActive ? '1px solid var(--panel-border)' : '1px solid transparent',
+              border: isActive ? '1px solid var(--accent)' : '1px solid transparent',
               borderBottom: 'none',
               color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
               cursor: 'pointer',
               fontSize: 13,
-              fontWeight: isActive ? 500 : 400,
+              fontWeight: isActive ? 700 : 400,
               whiteSpace: 'nowrap',
               flexShrink: 0,
-              transition: 'all 0.15s',
+              transition: 'background 0.1s, color 0.1s',
               userSelect: 'none',
               position: 'relative',
-              boxShadow: isActive ? '0 -4px 12px rgba(0,0,0,0.1)' : 'none',
+              boxShadow: 'none',
             }}
             onClick={() => openFile(path)}
-            onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.color = 'var(--text-primary)'; } }}
-            onMouseLeave={e => { if (!isActive) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; } }}
+            onMouseEnter={(e) => {
+              if (!isActive) {
+                e.currentTarget.style.background = 'var(--panel-bg-hover)';
+                e.currentTarget.style.color = 'var(--text-primary)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isActive) {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = 'var(--text-secondary)';
+              }
+            }}
           >
-            {/* Minimal active indicator line */}
+            {/* Brutalist active indicator block */}
             {isActive && (
-              <div style={{
-                position: 'absolute', top: 0, left: 0, right: 0, height: 2,
-                background: 'var(--accent)', borderRadius: '8px 8px 0 0',
-                boxShadow: '0 2px 8px var(--accent-glow)'
-              }} />
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: 4,
+                  background: 'var(--accent)',
+                }}
+              />
             )}
 
             {isDirty && (
@@ -88,13 +107,29 @@ export default function TabBar() {
                 closeTab(path);
               }}
               style={{
-                background: 'none', border: 'none', padding: 2,
-                color: 'inherit', cursor: 'pointer', borderRadius: 4,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                opacity: 0.5, transition: 'all 0.1s', marginLeft: 2,
+                background: 'none',
+                border: 'none',
+                padding: 2,
+                color: 'inherit',
+                cursor: 'pointer',
+                borderRadius: 4,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: 0.5,
+                transition: 'all 0.1s',
+                marginLeft: 2,
               }}
-              onMouseEnter={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'rgba(239,68,68,0.15)'; e.currentTarget.style.color = '#ef4444'; }}
-              onMouseLeave={e => { e.currentTarget.style.opacity = '0.5'; e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'inherit'; }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.opacity = '1';
+                e.currentTarget.style.background = 'var(--red)';
+                e.currentTarget.style.color = '#fff';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.opacity = '0.5';
+                e.currentTarget.style.background = 'none';
+                e.currentTarget.style.color = 'inherit';
+              }}
             >
               <X size={12} strokeWidth={2.5} />
             </button>
