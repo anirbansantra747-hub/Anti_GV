@@ -77,6 +77,9 @@ Generate the JSON edit response for this step.
       ];
 
       // 1. Initial Generation
+      console.log(`\n[CoderAgent] ── Step ${step.stepId}: ${step.action} ${step.filePath} ──`);
+      console.log(`[CoderAgent]   Generating initial edits...`);
+
       const responseString = await generateGroqResponse(messages, {
         model: 'llama-3.3-70b-versatile',
         temperature: 0.1, // Keep deterministic for accurate code generation
@@ -84,36 +87,55 @@ Generate the JSON edit response for this step.
       });
 
       let editResult = JSON.parse(responseString);
+      const editCount = editResult.edits?.length || 0;
+      console.log(`[CoderAgent]   ✅ Initial generation: ${editCount} edit(s)`);
 
-      // 2. Self-Healing Verification Loop
+      // 2. Self-Healing Verification Loop (Critic → Fixer → Retry)
       let isCorrect = false;
       let feedback = '';
       let retryCount = 0;
       const MAX_RETRIES = 2;
 
       while (!isCorrect && retryCount <= MAX_RETRIES) {
+        const attemptNum = retryCount + 1;
+        console.log(
+          `[CoderAgent]   🔍 Critic review (attempt ${attemptNum}/${MAX_RETRIES + 1})...`
+        );
         socket.emit('agent:thinking', {
-          message: `Verifying step ${step.stepId} (Attempt ${retryCount + 1})...`,
+          message: `Verifying step ${step.stepId} (Attempt ${attemptNum})...`,
         });
 
-        // Pass to Semantic Critic
+        // Pass ACTUAL file content (not the full LLM context blob)
         const criticResult = await runCritic({
           prompt: step.task || step.description,
-          fileContent: fullContext,
+          fileContent: actualFileContent,
           filePath: step.filePath,
-          proposedEdits: editResult.edits || [], // The schema uses { edits: [...] }
+          proposedEdits: editResult.edits || [],
         });
 
         isCorrect = criticResult.isCorrect;
         feedback = criticResult.feedback;
 
+        console.log(`[CoderAgent]   🔍 Critic verdict: ${isCorrect ? '✅ PASS' : '❌ FAIL'}`);
+        console.log(`[CoderAgent]   🔍 Feedback: ${String(feedback).substring(0, 120)}`);
+
         if (isCorrect) {
-          socket.emit('agent:thinking', { message: `Step ${step.stepId} verified successfully.` });
+          socket.emit('agent:thinking', {
+            message: `Step ${step.stepId} verified successfully. ✅`,
+          });
           break;
         }
 
         // Needs fixing
         retryCount++;
+        if (retryCount > MAX_RETRIES) {
+          console.warn(
+            `[CoderAgent]   ⚠️  Max retries reached for step ${step.stepId}, using last attempt`
+          );
+          break;
+        }
+
+        console.log(`[CoderAgent]   🔧 Fixer attempt ${retryCount}/${MAX_RETRIES}...`);
         socket.emit('agent:thinking', {
           message: `Fixing step ${step.stepId} (Retry ${retryCount}/${MAX_RETRIES}): ${String(feedback).substring(0, 40)}...`,
         });
@@ -121,19 +143,28 @@ Generate the JSON edit response for this step.
         try {
           const fixedEdits = await runFixer({
             prompt: step.task || step.description,
-            fileContent: fullContext,
+            fileContent: actualFileContent,
             filePath: step.filePath,
             previousEdits: editResult.edits || [],
             errorFeedback: feedback,
           });
 
-          editResult = { edits: fixedEdits }; // Update the working edits
+          console.log(
+            `[CoderAgent]   🔧 Fixer returned ${fixedEdits?.length || 0} corrected edit(s)`
+          );
+          editResult = { edits: fixedEdits };
         } catch (fixError) {
-          console.error(`[CoderAgent] Fixer crashed on step ${step.stepId}:`, fixError);
-          break; // Break loop but keep original bad edits to avoid totally dropping the ball
+          console.error(
+            `[CoderAgent]   🔧 Fixer crashed on step ${step.stepId}:`,
+            fixError.message
+          );
+          break;
         }
       }
 
+      console.log(
+        `[CoderAgent]   📦 Final result: ${editResult.edits?.length || 0} edit(s), verified=${isCorrect}`
+      );
       edits.push(editResult);
 
       // 3. Emit completed edits to frontend
@@ -145,11 +176,13 @@ Generate the JSON edit response for this step.
         file: step.filePath,
       });
     } catch (error) {
-      console.error(`[CoderAgent] Failed to generate code for step ${step.stepId}:`, error);
+      console.error(
+        `[CoderAgent] ❌ Failed to generate code for step ${step.stepId}:`,
+        error.message
+      );
       socket.emit('agent:error', {
         message: `Coder failed on step ${step.stepId}: ${error.message}`,
       });
-      // Optionally continue to next step instead of throwing depending on strictness
     }
 
     socket.emit('agent:step:done', { stepId: `code_${step.stepId}` });

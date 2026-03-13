@@ -22,6 +22,9 @@ export default function AIPanel() {
     activeTransactionId,
     approveTransaction,
     rejectTransaction,
+    currentPlan,
+    approvePlan,
+    rejectPlan,
   } = useAgentStore();
 
   const [inputMsg, setInputMsg] = useState('');
@@ -201,6 +204,70 @@ export default function AIPanel() {
                       </li>
                     ))}
                   </ul>
+
+                  {/* If this is the active pending plan, show approval buttons */}
+                  {currentPlan && currentPlan.summary === msg.data.summary && (
+                    <div
+                      style={{
+                        marginTop: 16,
+                        display: 'flex',
+                        gap: 8,
+                        background: 'rgba(0,0,0,0.1)',
+                        padding: 10,
+                        borderRadius: 8,
+                        border: '1px solid rgba(255,255,255,0.05)',
+                      }}
+                    >
+                      <button
+                        onClick={approvePlan}
+                        style={{
+                          flex: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6,
+                          background: '#10b981',
+                          color: '#fff',
+                          border: 'none',
+                          padding: '8px',
+                          borderRadius: 6,
+                          cursor: 'pointer',
+                          fontSize: 12,
+                          fontWeight: 600,
+                          transition: 'background 0.2s',
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = '#059669')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = '#10b981')}
+                      >
+                        <Check size={14} strokeWidth={3} /> Approve Plan
+                      </button>
+                      <button
+                        onClick={rejectPlan}
+                        style={{
+                          flex: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6,
+                          background: 'rgba(255,255,255,0.05)',
+                          color: '#cbd5e1',
+                          border: '1px solid var(--panel-border)',
+                          padding: '8px',
+                          borderRadius: 6,
+                          cursor: 'pointer',
+                          fontSize: 12,
+                          fontWeight: 500,
+                          transition: 'background 0.2s',
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = '#ef444455')}
+                        onMouseLeave={(e) =>
+                          (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')
+                        }
+                      >
+                        <X size={14} strokeWidth={2} /> Reject
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : msg.type === 'code' ? (
                 <div>

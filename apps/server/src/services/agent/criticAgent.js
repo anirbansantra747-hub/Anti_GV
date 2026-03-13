@@ -34,6 +34,9 @@ Return JSON with "isCorrect" and "feedback". Be strict.`;
  */
 export async function runCritic(params) {
   const { prompt, fileContent, filePath, proposedEdits } = params;
+  console.log(
+    `[CriticAgent] Reviewing ${filePath} — ${proposedEdits.length} edit(s), fileContent: ${fileContent.length} chars`
+  );
 
   const userContent = `User Request:
 ${prompt}
@@ -62,6 +65,9 @@ Analyze the edits. Are they correct? Respond in JSON matching the schema.`;
     );
     const response = JSON.parse(responseText);
 
+    console.log(
+      `[CriticAgent] Result: ${response.isCorrect ? '✅ PASS' : '❌ FAIL'} — ${String(response.feedback).substring(0, 80)}`
+    );
     return {
       isCorrect: response.isCorrect,
       feedback: response.feedback,

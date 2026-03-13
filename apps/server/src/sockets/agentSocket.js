@@ -1,5 +1,13 @@
 import { runAgentPipeline } from '../services/agent/index.js';
 
+/**
+ * Per-socket approval gate.
+ * When the pipeline reaches the planning phase it calls `waitForApproval()`.
+ * That returns a Promise that only resolves when the client emits
+ * `agent:approve` or `agent:reject`.
+ */
+const pendingApprovals = new Map(); // socketId → { resolve }
+
 export const setupAgentSocket = (io, socket) => {
   /**
    * Listen for user prompts coming from the AIPanel
@@ -14,24 +22,44 @@ export const setupAgentSocket = (io, socket) => {
       return;
     }
 
-    // Call the main orchestrator timeline
+    // Call the main orchestrator timeline, passing the approval gate
     await runAgentPipeline({
       prompt,
       frontendContext: context || {},
       serverContext: {
-        // Here we could grab terminal output from execution memory if needed
         terminalOutput: null,
       },
       socket,
+      waitForApproval: () => waitForApproval(socket),
     });
   });
 
   /**
    * Listen for user approving a generated plan
    */
-  socket.on('agent:approve', (payload) => {
+  socket.on('agent:approve', () => {
     console.log(`[socket] agent:approve received from ${socket.id}`);
-    // Future: Resume the paused pipeline after planning
+    const pending = pendingApprovals.get(socket.id);
+    if (pending) {
+      pending.resolve({ approved: true });
+      pendingApprovals.delete(socket.id);
+      console.log(`[socket] ✅ Pipeline resumed (approved)`);
+    } else {
+      console.warn(`[socket] agent:approve received but no pending approval found`);
+    }
+  });
+
+  /**
+   * Listen for user rejecting a generated plan
+   */
+  socket.on('agent:reject', () => {
+    console.log(`[socket] agent:reject received from ${socket.id}`);
+    const pending = pendingApprovals.get(socket.id);
+    if (pending) {
+      pending.resolve({ approved: false });
+      pendingApprovals.delete(socket.id);
+      console.log(`[socket] ❌ Pipeline aborted (rejected)`);
+    }
   });
 
   /**
@@ -39,6 +67,37 @@ export const setupAgentSocket = (io, socket) => {
    */
   socket.on('agent:cancel', () => {
     console.log(`[socket] agent:cancel received from ${socket.id}`);
-    // Future: Abort controller logic for LLM streaming
+    const pending = pendingApprovals.get(socket.id);
+    if (pending) {
+      pending.resolve({ approved: false });
+      pendingApprovals.delete(socket.id);
+    }
+  });
+
+  /**
+   * Clean up on disconnect
+   */
+  socket.on('disconnect', () => {
+    const pending = pendingApprovals.get(socket.id);
+    if (pending) {
+      pending.resolve({ approved: false });
+      pendingApprovals.delete(socket.id);
+      console.log(`[socket] Client disconnected — pending approval auto-rejected`);
+    }
   });
 };
+
+/**
+ * Returns a Promise that pauses the pipeline until the user
+ * emits `agent:approve` or `agent:reject`.
+ * @param {import('socket.io').Socket} socket
+ * @returns {Promise<{ approved: boolean }>}
+ */
+function waitForApproval(socket) {
+  return new Promise((resolve) => {
+    console.log(
+      `[socket] ⏸️  Pipeline PAUSED — waiting for agent:approve or agent:reject from ${socket.id}`
+    );
+    pendingApprovals.set(socket.id, { resolve });
+  });
+}

@@ -14,6 +14,7 @@ import { useAgentStore } from '../../stores/agentStore.js';
 import { useEditorStore } from '../../stores/editorStore.js';
 import { executeCode } from '../../services/execution/executionService.js';
 import { fileSystemAPI } from '../../services/fileSystemAPI.js';
+import { contextService } from '../../services/contextService.js';
 
 const TABS = ['TERMINAL', 'OUTPUT', 'PROBLEMS'];
 
@@ -60,7 +61,11 @@ export default function TerminalPane() {
 
     const onDataDisposable = term.onData((data) => socket.emit('terminal:input', { input: data }));
 
-    const onOutput = (payload) => term.write(payload.data);
+    const onOutput = (payload) => {
+      term.write(payload.data);
+      // Feed terminal output to contextService for AI context
+      contextService.appendTerminalOutput(payload.data);
+    };
     socket.on('terminal:output', onOutput);
 
     const handleResize = () => {
@@ -83,10 +88,12 @@ export default function TerminalPane() {
 
     const onExecOutput = ({ text }) => {
       setOutputLines((prev) => [...prev, { type: 'stdout', text }]);
+      contextService.appendTerminalOutput(text);
     };
 
     const onExecDone = ({ summary }) => {
       setOutputLines((prev) => [...prev, { type: 'info', text: summary + '\r\n' }]);
+      contextService.appendTerminalOutput(summary);
       setIsRunning(false);
     };
 

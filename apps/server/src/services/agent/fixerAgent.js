@@ -23,6 +23,8 @@ ${editJsonSchemaInstructions}
  */
 export async function runFixer(params) {
   const { prompt, fileContent, filePath, previousEdits, errorFeedback } = params;
+  console.log(`[FixerAgent] Fixing ${filePath} — ${previousEdits.length} previous edit(s)`);
+  console.log(`[FixerAgent] Error feedback: ${errorFeedback.substring(0, 100)}`);
 
   const userContent = `<User Request>
 ${prompt}
@@ -60,6 +62,7 @@ Your task: Fix the error and return a NEW set of valid JSON edits. Remember: The
     );
     const response = JSON.parse(responseText);
 
+    console.log(`[FixerAgent] ✅ Fixed: returned ${response.edits?.length || 0} corrected edit(s)`);
     return response.edits; // Corrected array of { search, replace }
   } catch (error) {
     console.error('[FixerAgent] Failed to fix edit:', error);
