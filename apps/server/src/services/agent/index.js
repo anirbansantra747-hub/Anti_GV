@@ -10,18 +10,31 @@ import crypto from 'crypto';
  * Main Agent Orchestrator Pipeline
  * Runs the sequence: Intent -> Context -> Plan -> Code -> Verify
  */
-export const runAgentPipeline = async ({ prompt, frontendContext, serverContext, socket }) => {
+export const runAgentPipeline = async ({
+  prompt,
+  frontendContext,
+  serverContext,
+  socket,
+  waitForApproval,
+}) => {
   try {
+    console.log(`\n[AgentPipeline] ═══════════════════════════════════════════`);
+    console.log(`[AgentPipeline] New pipeline started`);
+    console.log(`[AgentPipeline] Prompt: ${prompt.slice(0, 80)}${prompt.length > 80 ? '…' : ''}`);
+    console.log(`[AgentPipeline] ═══════════════════════════════════════════\n`);
+
     socket.emit('agent:thinking', { message: 'Classifying intent...' });
 
-    // 1. Classify Intent
+    // ── Phase 1: Classify Intent ─────────────────────────────────────────
     const { intent, confidence } = await classifyIntent(prompt);
+    console.log(`[AgentPipeline] P0 Intent: ${intent} (${Math.round(confidence * 100)}%)`);
     socket.emit('agent:thinking', {
       message: `Intent classified as ${intent} (${Math.round(confidence * 100)}% confidence)`,
     });
 
     // Handle non-coding intents early
     if (intent === 'ASK') {
+      console.log(`[AgentPipeline] Routing to ASK handler (no code changes)`);
       socket.emit('agent:thinking', { message: 'Assembling codebase context...' });
       const fullContext = await assembleContext(frontendContext, serverContext, prompt);
 
@@ -60,41 +73,67 @@ ${prompt}
         extraPayload: { messageId },
       });
 
+      console.log(`[AgentPipeline] ASK response streamed successfully`);
       socket.emit('agent:done', { messageId, message: '' }); // Send empty message to just resolve the loading state
       return;
     }
 
-    // 2. Assemble Context
+    // ── Phase 2: Assemble Context ────────────────────────────────────────
+    console.log(`[AgentPipeline] P1 Assembling codebase context...`);
     socket.emit('agent:thinking', { message: 'Assembling codebase context...' });
     const fullContext = await assembleContext(frontendContext, serverContext, prompt);
+    console.log(`[AgentPipeline] P1 Context assembled (${fullContext.length} chars)`);
 
-    // 3. Planning (Module 5)
+    // ── Phase 3: Planning ────────────────────────────────────────────────
+    console.log(`[AgentPipeline] P2 Generating execution plan...`);
     socket.emit('agent:thinking', { message: 'Generating execution plan...' });
     socket.emit('agent:step:start', { stepId: 'plan', description: 'Proposed Plan' });
 
     const plan = await generatePlan(prompt, fullContext);
+    console.log(`[AgentPipeline] P2 Plan generated: ${plan.steps?.length || 0} step(s)`);
+    plan.steps?.forEach((s, i) =>
+      console.log(`[AgentPipeline]   Step ${i + 1}: [${s.action}] ${s.filePath} — ${s.description}`)
+    );
 
     socket.emit('agent:plan', plan);
     socket.emit('agent:step:done', { stepId: 'plan' });
 
-    // In a real flow, we wait for 'agent:approve' here before continuing to Coding
-    // For now, we simulate continuing immediately
+    // ── Phase 3.5: APPROVAL GATE ─────────────────────────────────────────
+    // Pipeline PAUSES here until user clicks Approve or Reject.
+    if (waitForApproval) {
+      console.log(`[AgentPipeline] P3 ⏸️  Waiting for user approval...`);
+      socket.emit('agent:thinking', { message: 'Waiting for your approval...' });
 
-    // 4. Coding (Module 6)
+      const { approved } = await waitForApproval();
+
+      if (!approved) {
+        console.log(`[AgentPipeline] P3 ❌ Plan rejected by user — pipeline aborted`);
+        socket.emit('agent:done', { message: 'Plan rejected. Pipeline stopped.' });
+        return;
+      }
+
+      console.log(`[AgentPipeline] P3 ✅ Plan approved — continuing to code generation`);
+    } else {
+      console.log(`[AgentPipeline] P3 ⚠️  No approval gate — auto-continuing (dev mode)`);
+    }
+
+    // ── Phase 4+5: Coding + Verification ─────────────────────────────────
+    // The critic+fixer self-healing loop runs INSIDE generateCodeEdits()
+    // for each step. See coderAgent.js for the verify/fix retry logic.
+    console.log(`[AgentPipeline] P4+P5 Coding + Verification starting...`);
     socket.emit('agent:thinking', { message: 'Applying edits based on plan...' });
 
-    // Instead of mock code generation, we pass the plan + context to the real Coder Agent
     const edits = await generateCodeEdits(plan, fullContext, socket);
 
-    // Once the edits are fully generated, signal that the coding phase is done
+    console.log(`[AgentPipeline] P4+P5 Complete: ${edits.length} file(s) edited`);
     socket.emit('agent:step:done', { stepId: 'code-generation' });
 
-    // 5. Verification (Module 8 placeholder)
-    // socket.emit('agent:thinking', { message: 'Verifying code...' });
-
+    console.log(`[AgentPipeline] ═══════════════════════════════════════════`);
+    console.log(`[AgentPipeline] Pipeline complete ✅`);
+    console.log(`[AgentPipeline] ═══════════════════════════════════════════\n`);
     socket.emit('agent:done', { message: 'Pipeline complete.' });
   } catch (error) {
-    console.error('[AgentPipeline] Error:', error);
+    console.error('[AgentPipeline] ❌ Error:', error);
     socket.emit('agent:error', {
       message: error.message || 'An unknown error occurred in the agent pipeline',
     });

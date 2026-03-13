@@ -217,21 +217,40 @@ export const useAgentStore = create((set, get) => {
       }));
 
       try {
-        // Call teammate's service to get context
-        const { contextString } = await contextService.buildContext({
-          activeFile: null,
-          openTabs: [],
+        // ── Pull real editor state from editorStore ──────────────────────
+        const { useEditorStore } = await import('./editorStore.js');
+        const editorState = useEditorStore.getState();
+        const activeFile = editorState.activeFile;
+        const openTabs = editorState.openTabs || [];
+        const cursorPosition = editorState.cursorPosition || { line: 1, column: 1, selected: '' };
+
+        console.group('[AgentStore] sendPrompt()');
+        console.log('  prompt       :', prompt.slice(0, 80) + (prompt.length > 80 ? '…' : ''));
+        console.log('  activeFile   :', activeFile);
+        console.log('  openTabs     :', openTabs);
+        console.log('  cursorPos    :', cursorPosition);
+
+        // Build enriched context with ALL signals
+        const { contextString, includedFiles } = await contextService.buildContext({
+          activeFile,
+          openTabs,
           userPrompt: prompt,
+          cursorPosition,
         });
+
+        console.log('  includedFiles:', includedFiles);
+        console.log('  contextLen   :', contextString.length, 'chars');
+        console.groupEnd();
 
         socket.emit('agent:prompt', {
           prompt,
           context: {
             contextString,
-            activeFile: null, // We could hook this into editorStore
+            activeFile,
           },
         });
       } catch (err) {
+        console.error('[AgentStore] sendPrompt failed:', err);
         set((state) => ({
           isThinking: false,
           messages: [
@@ -250,7 +269,26 @@ export const useAgentStore = create((set, get) => {
     approvePlan: () => {
       if (!socket) return;
       socket.emit('agent:approve', {});
-      set({ currentPlan: null, isThinking: true, thinkingMessage: 'Plan approved. Continuing...' });
+      set({ currentPlan: null, isThinking: true, thinkingMessage: 'Plan approved. Coding...' });
+    },
+
+    rejectPlan: () => {
+      if (!socket) return;
+      socket.emit('agent:reject', {});
+      set({ currentPlan: null, isThinking: false, thinkingMessage: '' });
+
+      // Optionally add a local message showing the user rejected it
+      set((state) => ({
+        messages: [
+          ...state.messages,
+          {
+            id: Date.now(),
+            role: 'user',
+            type: 'text',
+            content: '❌ Plan rejected.',
+          },
+        ],
+      }));
     },
 
     cancel: () => {
@@ -319,3 +357,10 @@ export const useAgentStore = create((set, get) => {
     },
   };
 });
+
+// ── Expose store globally so contextService can read chat history ──────────
+// (avoids circular import: agentStore → contextService → agentStore)
+if (typeof window !== 'undefined') {
+  window.__agentStoreRef = { useAgentStore };
+  console.log('[AgentStore] ✅ window.__agentStoreRef set for contextService chat history access');
+}

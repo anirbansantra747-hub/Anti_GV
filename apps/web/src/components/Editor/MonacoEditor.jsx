@@ -89,6 +89,12 @@ export default function MonacoEditor({ onContentLoad, onCursorPositionChange }) 
       monacoRef.current = monaco;
       currentPathRef.current = activeFile;
 
+      // Expose monaco globally so contextService can read diagnostics
+      if (typeof window !== 'undefined') {
+        window.monaco = monaco;
+        console.log('[MonacoEditor] ✅ window.monaco exposed for diagnostics');
+      }
+
       // Load content if already cached
       if (activeFile && contentCache.has(activeFile)) {
         editor.setValue(contentCache.get(activeFile));
@@ -114,13 +120,32 @@ export default function MonacoEditor({ onContentLoad, onCursorPositionChange }) 
         openFile(next);
       });
 
-      // Cursor position tracking → StatusBar
+      // ── Cursor position tracking → StatusBar + editorStore ──────────
       editor.onDidChangeCursorPosition((e) => {
+        const pos = e.position;
+
+        // Get selected text (if any)
+        const selection = editor.getSelection();
+        let selected = '';
+        if (selection && !selection.isEmpty()) {
+          selected = editor.getModel()?.getValueInRange(selection) || '';
+        }
+
+        // Feed StatusBar (existing prop callback)
         onCursorPositionChange?.({
-          lineNumber: e.position.lineNumber,
-          column: e.position.column,
+          lineNumber: pos.lineNumber,
+          column: pos.column,
+        });
+
+        // Feed editorStore → contextService (NEW)
+        useEditorStore.getState().setCursor({
+          line: pos.lineNumber,
+          column: pos.column,
+          selected,
         });
       });
+
+      console.log('[MonacoEditor] ✅ Cursor tracking wired to editorStore.setCursor()');
     },
     [activeFile]
   );
