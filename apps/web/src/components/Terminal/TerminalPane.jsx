@@ -6,6 +6,11 @@
  * - Code Runner tab: runs active file via WebContainers / Pyodide / Piston
  * - Output tab with stdin input field for feeding input to programs
  * - Problems tab: live error markers parsed from Piston stderr
+ *
+ * Design: Industrial Avant-Garde (Impeccable Standard)
+ * - OKLCH colors via CSS variables
+ * - Space Grotesk UI font
+ * - Hard edges, sharp borders, no rounding
  */
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
@@ -19,10 +24,36 @@ import { fileSystemAPI } from '../../services/fileSystemAPI.js';
 
 const TABS = ['TERMINAL', 'OUTPUT', 'PROBLEMS'];
 
-// ── Severity badge colours ────────────────────────────────────
+// ── Severity badge colours (OKLCH-inspired) ────────────────────────────────
 const SEVERITY_COLORS = {
-  error: { bg: '#3f1010', border: '#7f1d1d', text: '#fca5a5', icon: '✗' },
-  warning: { bg: '#3b2900', border: '#78350f', text: '#fcd34d', icon: '⚠' },
+  error: { bg: '#2a0a0a', border: '#7f1d1d', text: '#fca5a5', icon: '✗' },
+  warning: { bg: '#2a1a00', border: '#78350f', text: '#fcd34d', icon: '⚠' },
+};
+
+// ── Shared brutalist styles ────────────────────────────────────────────────
+const TAB_BASE = {
+  background: 'transparent',
+  border: 'none',
+  borderBottom: '3px solid transparent',
+  color: 'var(--text-muted)',
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: '0.1em',
+  textTransform: 'uppercase',
+  padding: '0 14px',
+  height: '100%',
+  cursor: 'pointer',
+  transition: 'color 0.1s, border-color 0.1s',
+  fontFamily: 'var(--font-ui)',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+};
+
+const TAB_ACTIVE = {
+  ...TAB_BASE,
+  color: 'var(--accent)',
+  borderBottom: '3px solid var(--accent)',
 };
 
 export default function TerminalPane() {
@@ -30,6 +61,7 @@ export default function TerminalPane() {
   const outputRef = useRef(null);
   const xtermRef = useRef(null);
   const fitAddonRef = useRef(null);
+  const containerRef = useRef(null);
   const socket = useAgentStore((state) => state.socket);
   const activeFile = useEditorStore((state) => state.activeFile);
 
@@ -37,8 +69,8 @@ export default function TerminalPane() {
   const [activeTab, setActiveTab] = useState('TERMINAL');
   const [outputLines, setOutputLines] = useState([]);
   const [isRunning, setIsRunning] = useState(false);
-  const [problems, setProblems] = useState([]); // ErrorMarker[]
-  const [stdin, setStdin] = useState(''); // stdin text area content
+  const [problems, setProblems] = useState([]);
+  const [stdin, setStdin] = useState('');
 
   // ─── xterm.js setup ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -46,20 +78,41 @@ export default function TerminalPane() {
 
     const term = new Terminal({
       cursorBlink: true,
-      fontSize: 14,
-      fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+      fontSize: 13,
+      fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
+      lineHeight: 1.5,
+      letterSpacing: 0.5,
       theme: {
-        background: '#080c14',
-        foreground: '#e2e8f0',
-        cursor: '#cbd5e1',
-        selectionBackground: '#334155',
+        background: '#0d0f14',
+        foreground: 'oklch(90% 0.01 250)',
+        cursor: 'oklch(65% 0.18 35)' /* Accent orange */,
+        cursorAccent: '#0d0f14',
+        selectionBackground: 'oklch(30% 0.01 250)',
+        black: '#1e2030',
+        brightBlack: '#444b6a',
+        red: '#ff5555',
+        brightRed: '#ff6e6e',
+        green: '#50fa7b',
+        brightGreen: '#69ff94',
+        yellow: '#f1fa8c',
+        brightYellow: '#ffffa5',
+        blue: '#bd93f9',
+        brightBlue: '#d6acff',
+        magenta: '#ff79c6',
+        brightMagenta: '#ff92df',
+        cyan: '#8be9fd',
+        brightCyan: '#a4ffff',
+        white: '#f8f8f2',
+        brightWhite: '#ffffff',
       },
     });
 
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.open(terminalRef.current);
-    fitAddon.fit();
+
+    // Defer fit to allow DOM to settle
+    requestAnimationFrame(() => fitAddon.fit());
 
     xtermRef.current = term;
     fitAddonRef.current = fitAddon;
@@ -70,20 +123,29 @@ export default function TerminalPane() {
     });
 
     const onDataDisposable = term.onData((data) => socket.emit('terminal:input', { input: data }));
-
     const onOutput = (payload) => term.write(payload.data);
     socket.on('terminal:output', onOutput);
 
     const handleResize = () => {
-      fitAddon.fit();
-      socket.emit('terminal:resize', { cols: term.cols, rows: term.rows });
+      requestAnimationFrame(() => {
+        fitAddon.fit();
+        socket.emit('terminal:resize', { cols: term.cols, rows: term.rows });
+      });
     };
     window.addEventListener('resize', handleResize);
+
+    // Also create a ResizeObserver on the container for panel drags
+    let ro;
+    if (terminalRef.current) {
+      ro = new ResizeObserver(() => handleResize());
+      ro.observe(terminalRef.current.parentElement || terminalRef.current);
+    }
 
     return () => {
       onDataDisposable.dispose();
       socket.off('terminal:output', onOutput);
       window.removeEventListener('resize', handleResize);
+      ro?.disconnect();
       term.dispose();
     };
   }, [socket]);
@@ -92,19 +154,12 @@ export default function TerminalPane() {
   useEffect(() => {
     if (!socket) return;
 
-    const onExecOutput = ({ text }) => {
-      setOutputLines((prev) => [...prev, { type: 'stdout', text }]);
-    };
-
+    const onExecOutput = ({ text }) => setOutputLines((p) => [...p, { type: 'stdout', text }]);
     const onExecDone = ({ summary }) => {
-      setOutputLines((prev) => [...prev, { type: 'info', text: (summary || '') + '\r\n' }]);
+      setOutputLines((p) => [...p, { type: 'info', text: (summary || '') + '\r\n' }]);
       setIsRunning(false);
     };
-
-    // ← NEW: receive structured error markers
-    const onExecProblems = ({ markers }) => {
-      setProblems(markers || []);
-    };
+    const onExecProblems = ({ markers }) => setProblems(markers || []);
 
     socket.on('exec:output', onExecOutput);
     socket.on('exec:done', onExecDone);
@@ -127,17 +182,12 @@ export default function TerminalPane() {
     if (isRunning || !activeFile) return;
 
     setOutputLines([]);
-    setProblems([]); // clear previous problems
+    setProblems([]);
     setActiveTab('OUTPUT');
     setIsRunning(true);
 
-    const handleOutput = (text) => {
-      setOutputLines((prev) => [...prev, { type: 'stdout', text }]);
-    };
-
-    const handleExit = (_code) => {
-      setIsRunning(false);
-    };
+    const handleOutput = (text) => setOutputLines((p) => [...p, { type: 'stdout', text }]);
+    const handleExit = () => setIsRunning(false);
 
     try {
       const code = await fileSystemAPI.readFile(activeFile);
@@ -145,7 +195,7 @@ export default function TerminalPane() {
         code,
         filename: activeFile.split('/').pop() || activeFile.split('\\').pop() || '',
         socket,
-        stdin, // ← pass stdin to execution service
+        stdin,
         onOutput: handleOutput,
         onExit: handleExit,
       });
@@ -159,54 +209,51 @@ export default function TerminalPane() {
   return (
     <div
       style={{
-        flex: 1,
         display: 'flex',
         flexDirection: 'column',
-        background: '#080c14',
-        borderTop: '1px solid #1e293b',
+        height: '100%',
+        background: 'var(--app-bg)',
+        borderTop: '1px solid var(--panel-border)',
+        overflow: 'hidden',
+        fontFamily: 'var(--font-ui)',
       }}
     >
       {/* Tab bar */}
       <div
         style={{
           display: 'flex',
-          alignItems: 'center',
-          borderBottom: '1px solid #1e293b',
+          alignItems: 'stretch',
+          borderBottom: '1px solid var(--panel-border)',
           padding: '0 8px',
           gap: 2,
           flexShrink: 0,
-          height: 34,
+          height: 38,
+          background: 'var(--panel-bg)',
         }}
       >
         {TABS.map((tab) => {
           const hasBadge = tab === 'PROBLEMS' && problems.length > 0;
+          const isActive = activeTab === tab;
           return (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              style={{
-                background: activeTab === tab ? '#0f172a' : 'transparent',
-                border: 'none',
-                borderBottom: activeTab === tab ? '2px solid #22d3ee' : '2px solid transparent',
-                color: activeTab === tab ? '#e2e8f0' : '#475569',
-                fontSize: 11,
-                fontWeight: 600,
-                letterSpacing: '0.08em',
-                padding: '6px 12px',
-                cursor: 'pointer',
-                transition: 'color 0.15s',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
+              style={isActive ? TAB_ACTIVE : TAB_BASE}
+              onMouseEnter={(e) => {
+                if (!isActive) e.currentTarget.style.color = 'var(--text-secondary)';
+              }}
+              onMouseLeave={(e) => {
+                if (!isActive) e.currentTarget.style.color = 'var(--text-muted)';
               }}
             >
               {tab}
               {hasBadge && (
                 <span
                   style={{
-                    background: '#7f1d1d',
-                    color: '#fca5a5',
-                    borderRadius: 9,
+                    background: SEVERITY_COLORS.error.bg,
+                    border: `1px solid ${SEVERITY_COLORS.error.border}`,
+                    color: SEVERITY_COLORS.error.text,
+                    borderRadius: 0,
                     fontSize: 9,
                     fontWeight: 700,
                     padding: '1px 5px',
@@ -231,17 +278,22 @@ export default function TerminalPane() {
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 5,
-            background: isRunning ? '#1e3a2f' : '#14532d',
-            color: isRunning ? '#86efac' : '#4ade80',
-            border: '1px solid #166534',
-            borderRadius: 4,
-            padding: '3px 10px',
+            gap: 6,
+            background: isRunning ? 'transparent' : 'var(--accent)',
+            color: isRunning ? 'var(--green)' : '#000000',
+            border: isRunning ? '1px solid var(--green)' : '1px solid var(--accent-dim)',
+            borderRadius: 0,
+            padding: '0 14px',
             fontSize: 11,
-            fontWeight: 600,
+            fontWeight: 700,
+            letterSpacing: '0.06em',
+            textTransform: 'uppercase',
             cursor: isRunning || !activeFile ? 'not-allowed' : 'pointer',
-            opacity: !activeFile ? 0.5 : 1,
-            transition: 'all 0.15s',
+            opacity: !activeFile ? 0.4 : 1,
+            transition: 'all 0.1s',
+            height: '100%',
+            margin: '0',
+            fontFamily: 'var(--font-ui)',
           }}
         >
           {isRunning ? (
@@ -249,54 +301,64 @@ export default function TerminalPane() {
               <span
                 style={{
                   display: 'inline-block',
-                  width: 8,
-                  height: 8,
-                  borderRadius: '50%',
-                  background: '#86efac',
+                  width: 7,
+                  height: 7,
+                  background: 'var(--green)',
                   animation: 'pulse 1s infinite',
                 }}
               />
-              Running...
+              RUNNING
             </>
           ) : (
-            <>▶ Run</>
+            <>▶ RUN</>
           )}
         </button>
       </div>
 
-      {/* Terminal panel (always mounted, hidden when not on TERMINAL tab) */}
+      {/* ── TERMINAL TAB (always mounted, hidden when inactive) ── */}
       <div
         style={{
           flex: 1,
-          padding: '8px',
+          padding: '8px 4px 4px 4px',
           overflow: 'hidden',
           display: activeTab === 'TERMINAL' ? 'block' : 'none',
+          minHeight: 0,
         }}
         ref={terminalRef}
       />
 
-      {/* Output panel */}
+      {/* ── OUTPUT TAB ── */}
       {activeTab === 'OUTPUT' && (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          {/* Stdin input bar */}
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            minHeight: 0,
+          }}
+        >
+          {/* STDIN bar */}
           <div
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 6,
-              padding: '4px 10px',
-              borderBottom: '1px solid #1e293b',
+              gap: 8,
+              padding: '6px 12px',
+              borderBottom: '1px solid var(--panel-border)',
               flexShrink: 0,
-              background: '#080c14',
+              background: 'var(--panel-bg)',
             }}
           >
             <label
               style={{
                 fontSize: 10,
                 fontWeight: 700,
-                color: '#475569',
-                letterSpacing: '0.06em',
+                color: 'var(--text-muted)',
+                letterSpacing: '0.1em',
                 flexShrink: 0,
+                fontFamily: 'var(--font-ui)',
+                textTransform: 'uppercase',
               }}
             >
               STDIN
@@ -305,20 +367,21 @@ export default function TerminalPane() {
               type="text"
               value={stdin}
               onChange={(e) => setStdin(e.target.value)}
-              placeholder="Input to pass to the program (newline-separated for multiple inputs)…"
+              placeholder="Input to pass to the program…"
               style={{
                 flex: 1,
-                background: '#0d1117',
-                border: '1px solid #1e293b',
-                borderRadius: 4,
-                color: '#e2e8f0',
+                background: 'var(--app-bg)',
+                border: '1px solid var(--panel-border)',
+                borderRadius: 0,
+                color: 'var(--text-primary)',
                 fontSize: 12,
-                fontFamily: "'JetBrains Mono', monospace",
-                padding: '3px 8px',
+                fontFamily: 'var(--font-mono)',
+                padding: '4px 8px',
                 outline: 'none',
+                transition: 'border-color 0.1s',
               }}
-              onFocus={(e) => (e.target.style.borderColor = '#22d3ee')}
-              onBlur={(e) => (e.target.style.borderColor = '#1e293b')}
+              onFocus={(e) => (e.target.style.borderColor = 'var(--accent)')}
+              onBlur={(e) => (e.target.style.borderColor = 'var(--panel-border)')}
             />
           </div>
 
@@ -329,46 +392,51 @@ export default function TerminalPane() {
               flex: 1,
               padding: '12px 16px',
               overflowY: 'auto',
-              fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+              fontFamily: 'var(--font-mono)',
               fontSize: 13,
-              lineHeight: 1.6,
-              color: '#e2e8f0',
+              lineHeight: 1.7,
+              color: 'var(--text-code)',
               whiteSpace: 'pre-wrap',
               wordBreak: 'break-all',
+              minHeight: 0,
             }}
           >
             {outputLines.length === 0 && !isRunning && (
-              <span style={{ color: '#475569' }}>Press ▶ Run to execute the active file...</span>
+              <span style={{ color: 'var(--text-muted)' }}>
+                Press ▶ RUN to execute the active file…
+              </span>
             )}
             {outputLines.map((line, i) => (
               <AnsiLine key={i} text={line.text} />
             ))}
-            {isRunning && <span style={{ color: '#64748b' }}>⟳ Running...</span>}
+            {isRunning && <span style={{ color: 'var(--text-muted)' }}>⟳ Running…</span>}
           </div>
         </div>
       )}
 
-      {/* Problems panel */}
+      {/* ── PROBLEMS TAB ── */}
       {activeTab === 'PROBLEMS' && (
         <div
           style={{
             flex: 1,
             overflowY: 'auto',
-            fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+            fontFamily: 'var(--font-mono)',
             fontSize: 12,
+            minHeight: 0,
           }}
         >
           {problems.length === 0 ? (
             <div
               style={{
-                padding: '20px 16px',
-                color: '#475569',
+                padding: '24px 16px',
+                color: 'var(--text-muted)',
                 display: 'flex',
                 alignItems: 'center',
-                gap: 8,
+                gap: 10,
+                fontFamily: 'var(--font-ui)',
               }}
             >
-              <span style={{ fontSize: 16 }}>✓</span>
+              <span style={{ fontSize: 18, color: 'var(--green)' }}>✓</span>
               <span>No problems detected. Run a file to check for errors.</span>
             </div>
           ) : (
@@ -376,8 +444,8 @@ export default function TerminalPane() {
               <thead>
                 <tr
                   style={{
-                    background: '#0d1117',
-                    borderBottom: '1px solid #1e293b',
+                    background: 'var(--panel-bg)',
+                    borderBottom: '1px solid var(--panel-border)',
                     position: 'sticky',
                     top: 0,
                     zIndex: 1,
@@ -387,12 +455,14 @@ export default function TerminalPane() {
                     <th
                       key={h}
                       style={{
-                        padding: '5px 10px',
+                        padding: '6px 12px',
                         textAlign: 'left',
                         fontSize: 10,
                         fontWeight: 700,
-                        letterSpacing: '0.07em',
-                        color: '#475569',
+                        letterSpacing: '0.1em',
+                        color: 'var(--text-muted)',
+                        fontFamily: 'var(--font-ui)',
+                        textTransform: 'uppercase',
                       }}
                     >
                       {h}
@@ -407,33 +477,51 @@ export default function TerminalPane() {
                     <tr
                       key={i}
                       style={{
-                        background: i % 2 === 0 ? 'transparent' : '#0a0f18',
-                        borderBottom: '1px solid #131d2e',
+                        background: i % 2 === 0 ? 'transparent' : 'var(--panel-bg)',
+                        borderBottom: '1px solid var(--panel-border)',
                       }}
                     >
-                      <td style={{ padding: '5px 10px' }}>
+                      <td style={{ padding: '6px 12px' }}>
                         <span
                           style={{
                             display: 'inline-block',
                             background: s.bg,
                             border: `1px solid ${s.border}`,
                             color: s.text,
-                            borderRadius: 4,
+                            borderRadius: 0,
                             padding: '1px 6px',
                             fontSize: 10,
                             fontWeight: 700,
-                            letterSpacing: '0.04em',
+                            letterSpacing: '0.06em',
                           }}
                         >
                           {s.icon} {p.severity.toUpperCase()}
                         </span>
                       </td>
-                      <td style={{ padding: '5px 10px', color: '#94a3b8' }}>{p.line}</td>
-                      <td style={{ padding: '5px 10px', color: '#64748b' }}>
+                      <td
+                        style={{
+                          padding: '6px 12px',
+                          color: 'var(--text-secondary)',
+                          fontVariantNumeric: 'tabular-nums',
+                        }}
+                      >
+                        {p.line}
+                      </td>
+                      <td
+                        style={{
+                          padding: '6px 12px',
+                          color: 'var(--text-muted)',
+                          fontVariantNumeric: 'tabular-nums',
+                        }}
+                      >
                         {p.col > 0 ? p.col : '—'}
                       </td>
                       <td
-                        style={{ padding: '5px 10px', color: '#e2e8f0', wordBreak: 'break-word' }}
+                        style={{
+                          padding: '6px 12px',
+                          color: 'var(--text-primary)',
+                          wordBreak: 'break-word',
+                        }}
                       >
                         {p.message}
                       </td>
@@ -460,6 +548,7 @@ function AnsiLine({ text }) {
     32: '#4ade80', // green
     33: '#facc15', // yellow
     34: '#60a5fa', // blue
+    35: '#c084fc', // magenta
     36: '#22d3ee', // cyan
     0: null, // reset
   };

@@ -60,16 +60,36 @@ function ResizeHandle({ direction = 'horizontal', onResize, className }) {
       onMouseDown={onMouseDown}
       style={{
         flexShrink: 0,
-        width: isH ? 4 : '100%',
-        height: isH ? '100%' : 4,
+        width: isH ? 'var(--resize-handle-w)' : '100%',
+        height: isH ? '100%' : 'var(--resize-handle-w)',
         cursor: isH ? 'col-resize' : 'row-resize',
         background: 'var(--resize-handle-color)',
-        transition: 'background 0.15s',
+        transition: 'background 0.2s',
         zIndex: 10,
+        position: 'relative',
       }}
-      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--resize-handle-hover)')}
-      onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--resize-handle-color)')}
-    />
+      className="resize-handle"
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = 'var(--resize-handle-hover)';
+        if (isH) e.currentTarget.style.boxShadow = '0 0 8px var(--accent-glow)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = 'var(--resize-handle-color)';
+        if (isH) e.currentTarget.style.boxShadow = 'none';
+      }}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          top: isH ? 0 : -3,
+          left: isH ? -3 : 0,
+          right: isH ? -3 : 0,
+          bottom: isH ? 0 : -3,
+          cursor: isH ? 'col-resize' : 'row-resize',
+          zIndex: 11,
+        }}
+      />
+    </div>
   );
 }
 
@@ -222,15 +242,17 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
             style={{
               background: 'var(--panel-bg)',
               border: '1px solid var(--accent)',
-              borderRadius: 14,
-              padding: '20px 36px',
+              borderRadius: 0,
+              padding: '24px 40px',
               color: 'var(--accent)',
-              fontSize: 16,
+              fontSize: 14,
               fontWeight: 700,
-              boxShadow: '0 16px 48px rgba(0,0,0,0.5)',
+              letterSpacing: '0.05em',
+              textTransform: 'uppercase',
+              boxShadow: '8px 8px 0px rgba(0,0,0,1)' /* Hard brutalist shadow */,
             }}
           >
-            📂 Drop files to open in workspace
+            📂 Drop files to open
           </div>
         </div>
       )}
@@ -264,23 +286,36 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
             style={{
               background: 'transparent',
               border: 'none',
-              color: sidebarOpen ? '#e2e8f0' : '#64748b',
+              color: sidebarOpen ? 'var(--text-primary)' : 'var(--text-muted)',
               cursor: 'pointer',
-              padding: '10px 0',
+              padding: '12px 0',
               width: '100%',
               display: 'flex',
               justifyContent: 'center',
-              borderLeft: sidebarOpen ? '2px solid #38bdf8' : '2px solid transparent',
+              position: 'relative',
+              transition: 'color 0.2s',
             }}
           >
+            {sidebarOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: 3,
+                  background: 'var(--accent)',
+                }}
+              />
+            )}
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              width="24"
-              height="24"
+              width="22"
+              height="22"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              strokeWidth="1.5"
+              strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
             >
@@ -299,7 +334,7 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
               display: 'flex',
               flexDirection: 'column',
               overflow: 'hidden',
-              background: '#111927',
+              background: 'var(--app-bg)',
             }}
           >
             <FileTree />
@@ -347,7 +382,14 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
           {/* Terminal */}
           {terminalOpen && (
             <div
-              style={{ height: terminalH, minHeight: terminalH, flexShrink: 0, overflow: 'hidden' }}
+              style={{
+                height: terminalH,
+                minHeight: terminalH,
+                flexShrink: 0,
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+              }}
             >
               <Terminal />
             </div>
@@ -361,8 +403,8 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
               alignItems: 'center',
               paddingLeft: 10,
               gap: 8,
-              background: '#060a12',
-              borderTop: '1px solid rgba(255,255,255,0.05)',
+              background: 'var(--panel-bg)',
+              borderTop: '1px solid var(--panel-border)',
               flexShrink: 0,
             }}
           >
@@ -370,19 +412,25 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
               onClick={() => setTerminalOpen((v) => !v)}
               style={{
                 background: 'none',
-                border: 'none',
+                border: '1px solid transparent',
                 color: 'var(--text-muted)',
                 fontSize: 10,
                 fontWeight: 700,
                 letterSpacing: '0.08em',
                 cursor: 'pointer',
-                padding: '2px 8px',
-                borderRadius: 3,
+                padding: '4px 10px',
+                borderRadius: 0,
                 textTransform: 'uppercase',
-                transition: 'color 0.15s',
+                transition: 'all 0.15s',
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
-              onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = 'var(--text-primary)';
+                e.currentTarget.style.borderColor = 'var(--panel-border)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'var(--text-muted)';
+                e.currentTarget.style.borderColor = 'transparent';
+              }}
             >
               {terminalOpen ? '⌄ Terminal' : '⌃ Terminal'}
             </button>
