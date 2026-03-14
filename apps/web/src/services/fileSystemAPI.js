@@ -93,6 +93,13 @@ class FileSystemAPI {
   mkdir(dirPath, opts = {}) {
     guardWrite(dirPath, opts.sourceModule ?? 'UI');
     memfs.mkdir(dirPath, { recursive: true });
+    // Keep workspace.version in sync so integrity checks don't see drift
+    snapshotStore
+      .computeTreeHash(memfs.workspace.root)
+      .then((newHash) => {
+        memfs.workspace.version = newHash;
+      })
+      .catch(() => {});
   }
 
   /**

@@ -9,97 +9,10 @@ import { Send, Cpu, Check, X, Orbit, Eye } from 'lucide-react';
 import { useAgentStore } from '../../stores/agentStore';
 import { useEditorStore } from '../../stores/editorStore.js';
 import { useWorkspaceAccessStore } from '../../stores/workspaceAccessStore.js';
-import { DiffViewer } from '../Editor/DiffViewer';
 import { diffService } from '../../services/diffService.js';
+import { useEditorStore } from '../../stores/editorStore.js';
 
-function Bubble({ msg }) {
-  const isUser = msg.role === 'user';
-  const isError = msg.type === 'error';
-
-  return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: isUser ? 'flex-end' : 'flex-start',
-      }}
-    >
-      <div
-        style={{
-          background: isUser ? 'var(--accent)' : 'color-mix(in srgb, var(--panel-bg) 72%, black)',
-          color: isUser ? '#041014' : isError ? '#fecaca' : 'var(--text-primary)',
-          padding: '12px 14px',
-          maxWidth: '92%',
-          wordBreak: 'break-word',
-          fontSize: 13,
-          lineHeight: 1.6,
-          border: isError
-            ? '1px solid rgba(248,113,113,0.35)'
-            : isUser
-              ? '1px solid var(--accent-dim)'
-              : '1px solid var(--panel-border)',
-          boxShadow: isUser ? '4px 4px 0px rgba(0,0,0,0.9)' : 'none',
-        }}
-      >
-        {msg.type === 'plan' ? (
-          <div>
-            <strong style={{ fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-              Plan
-            </strong>
-            <p style={{ margin: '8px 0' }}>{msg.data.summary}</p>
-            <ul style={{ paddingLeft: 18, margin: 0, color: 'var(--text-secondary)' }}>
-              {msg.data.steps.map((step) => (
-                <li key={step.stepId}>{step.action}</li>
-              ))}
-            </ul>
-          </div>
-        ) : msg.type === 'code' ? (
-          <div>
-            <div
-              style={{
-                fontFamily: '"JetBrains Mono", monospace',
-                fontSize: 12.5,
-                whiteSpace: 'pre-wrap',
-              }}
-            >
-              {msg.content}
-            </div>
-            {msg.criticFeedback && (
-              <div
-                style={{
-                  marginTop: 10,
-                  paddingTop: 10,
-                  borderTop: '1px dashed var(--panel-border)',
-                  fontSize: 11,
-                  color: msg.criticFeedback.includes('Approved') ? '#86efac' : '#fcd34d',
-                }}
-              >
-                {msg.criticFeedback}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div style={{ position: 'relative' }}>
-            <span style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</span>
-            {msg.isStreaming && (
-              <span
-                style={{
-                  display: 'inline-block',
-                  width: 8,
-                  height: 14,
-                  background: '#cbd5e1',
-                  marginLeft: 4,
-                  verticalAlign: 'middle',
-                  animation: 'blink 1s step-end infinite',
-                }}
-              />
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 export default function AIPanel() {
   const {
@@ -114,18 +27,111 @@ export default function AIPanel() {
     activeTransactionFiles,
     approveTransaction,
     rejectTransaction,
+    currentPlan,
+    approvePlan,
+    rejectPlan,
+    chats,
+    activeChatId,
+    loadChats,
+    createChat,
+    switchChat,
+    isChatLoading,
   } = useAgentStore();
   const activeFile = useEditorStore((s) => s.activeFile);
   const source = useWorkspaceAccessStore((s) => s.source);
 
   const [inputMsg, setInputMsg] = useState('');
-  const [showDiff, setShowDiff] = useState(false);
   const messagesEndRef = useRef(null);
+  const [indexStatus, setIndexStatus] = useState({
+    chunksStored: 0,
+    workspaceId: 'default',
+    inventoryCount: 0,
+    embeddingOk: false,
+    chromaOk: false,
+    embeddingInfo: null,
+    lastUpdated: '',
+    loading: false,
+    error: '',
+  });
 
   useEffect(() => {
     connect();
     return () => disconnect();
   }, [connect, disconnect]);
+
+  useEffect(() => {
+    if (isConnected) {
+      loadChats();
+    }
+  }, [isConnected, loadChats]);
+
+  useEffect(() => {
+    let timer = null;
+    const refresh = async () => {
+      try {
+        setIndexStatus((s) => ({ ...s, loading: true, error: '' }));
+        const res = await fetch(`${API_URL}/api/rag/status`);
+        if (!res.ok) throw new Error(`Status ${res.status}`);
+        const data = await res.json();
+        setIndexStatus((s) => ({
+          ...s,
+          chunksStored: data.chunksStored || 0,
+          workspaceId: data.workspaceId || 'default',
+          inventoryCount: data.inventoryCount || 0,
+          embeddingOk: Boolean(data.embeddingOk),
+          chromaOk: Boolean(data.chromaOk),
+          embeddingInfo: data.embeddingInfo || null,
+          lastUpdated: new Date().toLocaleTimeString(),
+          loading: false,
+          error: '',
+        }));
+      } catch (err) {
+        setIndexStatus((s) => ({
+          ...s,
+          loading: false,
+          error: err.message || 'Failed to load status',
+        }));
+      }
+    };
+
+    if (isConnected) {
+      refresh();
+      timer = setInterval(refresh, 15000);
+    }
+
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [isConnected]);
+
+  const handleReindex = async () => {
+    try {
+      setIndexStatus((s) => ({ ...s, loading: true, error: '' }));
+      const res = await fetch(`${API_URL}/api/rag/index`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ incremental: true }),
+      });
+      if (!res.ok) throw new Error(`Index failed (${res.status})`);
+      const data = await res.json();
+      setIndexStatus((s) => ({
+        ...s,
+        chunksStored: data?.result?.newChunks
+          ? s.chunksStored + data.result.newChunks
+          : s.chunksStored,
+        workspaceId: data.workspaceId || s.workspaceId,
+        lastUpdated: new Date().toLocaleTimeString(),
+        loading: false,
+        error: '',
+      }));
+    } catch (err) {
+      setIndexStatus((s) => ({
+        ...s,
+        loading: false,
+        error: err.message || 'Index failed',
+      }));
+    }
+  };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -201,21 +207,115 @@ export default function AIPanel() {
         </div>
       </div>
 
+      {/* Chat selector */}
       <div
         style={{
-          padding: '12px 18px',
-          borderBottom: '1px solid rgba(148,163,184,0.12)',
-          background: 'rgba(7,10,16,0.72)',
-          display: 'grid',
-          gap: 4,
+          padding: '10px 14px',
+          borderBottom: '1px solid var(--panel-border)',
+          background: 'rgba(0,0,0,0.2)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
         }}
       >
-        <span style={{ fontSize: 10, letterSpacing: '0.08em', color: 'var(--text-muted)' }}>
-          SAVE TARGET
-        </span>
-        <span style={{ fontSize: 12, color: 'var(--text-primary)' }}>{source.label}</span>
+        <select
+          value={activeChatId || ''}
+          onChange={(e) => switchChat(e.target.value)}
+          disabled={isChatLoading || !isConnected}
+          style={{
+            flex: 1,
+            background: 'var(--app-bg)',
+            border: '1px solid var(--panel-border)',
+            color: 'var(--text-primary)',
+            padding: '6px 8px',
+            fontSize: 12,
+          }}
+        >
+          {chats.length === 0 && <option value="">No chats</option>}
+          {chats.map((c) => (
+            <option key={c.chatId} value={c.chatId}>
+              {c.title || 'Untitled'}
+            </option>
+          ))}
+        </select>
+        <button
+          onClick={createChat}
+          disabled={!isConnected || isChatLoading}
+          style={{
+            background: 'var(--accent)',
+            color: '#000',
+            border: 'none',
+            padding: '6px 10px',
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: '0.06em',
+            cursor: !isConnected || isChatLoading ? 'not-allowed' : 'pointer',
+          }}
+        >
+          New
+        </button>
       </div>
 
+      {/* Index Status */}
+      <div
+        style={{
+          padding: '10px 14px',
+          borderBottom: '1px solid var(--panel-border)',
+          background: 'rgba(0,0,0,0.18)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span
+            style={{
+              fontSize: 10,
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              color: 'var(--text-muted)',
+            }}
+          >
+            Index Status
+          </span>
+          <span style={{ fontSize: 12, color: 'var(--text-primary)' }}>
+            {indexStatus.chunksStored} chunks / {indexStatus.inventoryCount} files -{' '}
+            {indexStatus.workspaceId}
+          </span>
+          <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+            Embed: {indexStatus.embeddingOk ? 'OK' : 'Down'} | Chroma:{' '}
+            {indexStatus.chromaOk ? 'OK' : 'Down'}
+          </span>
+          <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+            {indexStatus.error
+              ? `Error: ${indexStatus.error}`
+              : indexStatus.lastUpdated
+                ? `Updated ${indexStatus.lastUpdated}`
+                : 'Not loaded'}
+          </span>
+        </div>
+        <button
+          onClick={handleReindex}
+          disabled={indexStatus.loading || !isConnected}
+          style={{
+            background:
+              indexStatus.loading || !isConnected ? 'var(--panel-border)' : 'var(--accent)',
+            color: indexStatus.loading || !isConnected ? 'var(--text-muted)' : '#000',
+            border: 'none',
+            borderRadius: 0,
+            padding: '6px 10px',
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: '0.06em',
+            cursor: indexStatus.loading || !isConnected ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {indexStatus.loading ? 'Indexing...' : 'Reindex'}
+        </button>
+      </div>
+
+      {/* Messages Area */}
       <div
         style={{
           flex: 1,
@@ -257,7 +357,177 @@ export default function AIPanel() {
         )}
 
         {messages.map((msg) => (
-          <Bubble key={msg.id} msg={msg} />
+          <div
+            key={msg.id}
+            className="animate-in"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start',
+            }}
+          >
+            <div
+              style={{
+                background: msg.role === 'user' ? 'var(--accent)' : 'var(--app-bg)',
+                color: msg.role === 'user' ? '#000000' : 'var(--text-primary)',
+                padding: '12px 16px',
+                borderRadius: 0,
+                maxWidth: '90%',
+                wordBreak: 'break-word',
+                fontSize: 13.5,
+                lineHeight: 1.6,
+                border:
+                  msg.role === 'user'
+                    ? '1px solid var(--accent-dim)'
+                    : '1px solid var(--panel-border)',
+                borderLeft:
+                  msg.role === 'user' ? '1px solid var(--accent-dim)' : '4px solid var(--accent)',
+                boxShadow: msg.role === 'user' ? '4px 4px 0px rgba(0,0,0,1)' : 'none',
+                ...(msg.type === 'error' && {
+                  color: 'var(--red)',
+                  border: '1px solid var(--red)',
+                  borderLeft: '4px solid var(--red)',
+                  background: 'var(--app-bg)',
+                }),
+              }}
+            >
+              {msg.type === 'plan' ? (
+                <div>
+                  <strong
+                    style={{
+                      opacity: 0.8,
+                      fontSize: 12,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                    }}
+                  >
+                    Proposed Plan
+                  </strong>
+                  <p style={{ margin: '8px 0' }}>{msg.data.summary}</p>
+                  <ul style={{ paddingLeft: 20, margin: 0, color: 'var(--text-secondary)' }}>
+                    {msg.data.steps.map((s) => (
+                      <li key={s.stepId} style={{ marginBottom: 4 }}>
+                        <span style={{ color: 'var(--accent)' }}>{s.action}</span>{' '}
+                        <code
+                          style={{ background: '#00000044', padding: '2px 4px', borderRadius: 4 }}
+                        >
+                          {s.filePath}
+                        </code>
+                      </li>
+                    ))}
+                  </ul>
+
+                  {/* If this is the active pending plan, show approval buttons */}
+                  {currentPlan && currentPlan.summary === msg.data.summary && (
+                    <div
+                      style={{
+                        marginTop: 16,
+                        display: 'flex',
+                        gap: 8,
+                        background: 'rgba(0,0,0,0.1)',
+                        padding: 10,
+                        borderRadius: 8,
+                        border: '1px solid rgba(255,255,255,0.05)',
+                      }}
+                    >
+                      <button
+                        onClick={approvePlan}
+                        style={{
+                          flex: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6,
+                          background: '#10b981',
+                          color: '#fff',
+                          border: 'none',
+                          padding: '8px',
+                          borderRadius: 6,
+                          cursor: 'pointer',
+                          fontSize: 12,
+                          fontWeight: 600,
+                          transition: 'background 0.2s',
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = '#059669')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = '#10b981')}
+                      >
+                        <Check size={14} strokeWidth={3} /> Approve Plan
+                      </button>
+                      <button
+                        onClick={rejectPlan}
+                        style={{
+                          flex: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6,
+                          background: 'rgba(255,255,255,0.05)',
+                          color: '#cbd5e1',
+                          border: '1px solid var(--panel-border)',
+                          padding: '8px',
+                          borderRadius: 6,
+                          cursor: 'pointer',
+                          fontSize: 12,
+                          fontWeight: 500,
+                          transition: 'background 0.2s',
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = '#ef444455')}
+                        onMouseLeave={(e) =>
+                          (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')
+                        }
+                      >
+                        <X size={14} strokeWidth={2} /> Reject
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : msg.type === 'code' ? (
+                <div>
+                  <div
+                    style={{
+                      fontFamily: '"JetBrains Mono", monospace',
+                      fontSize: 12.5,
+                      whiteSpace: 'pre-wrap',
+                    }}
+                  >
+                    {msg.content}
+                  </div>
+                  {msg.criticFeedback && (
+                    <div
+                      style={{
+                        marginTop: 12,
+                        paddingTop: 12,
+                        borderTop: '1px dashed var(--panel-border)',
+                        fontSize: 11,
+                        color: msg.criticFeedback.includes('Approved') ? '#4ade80' : '#fbbf24',
+                      }}
+                    >
+                      <strong style={{ opacity: 0.7 }}>Semantic Verifier:</strong>
+                      <br />
+                      {msg.criticFeedback}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ position: 'relative' }}>
+                  <span style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</span>
+                  {msg.isStreaming && (
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        width: '8px',
+                        height: '14px',
+                        background: '#cbd5e1',
+                        marginLeft: '4px',
+                        verticalAlign: 'middle',
+                        animation: 'blink 1s step-end infinite',
+                      }}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         ))}
 
         {isThinking && (
@@ -308,7 +578,13 @@ export default function AIPanel() {
               </span>
             </div>
             <button
-              onClick={() => setShowDiff(true)}
+              onClick={() => {
+                const tx = diffService.getTransaction(activeTransactionId);
+                const first = tx?.patchedPaths?.[0];
+                if (first) {
+                  useEditorStore.getState().openFile(first);
+                }
+              }}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -320,8 +596,7 @@ export default function AIPanel() {
                 cursor: 'pointer',
               }}
             >
-              <Eye size={14} strokeWidth={2.5} />
-              Review diff
+              <Eye size={14} strokeWidth={3} /> Review in Editor
             </button>
           </div>
 
@@ -442,13 +717,6 @@ export default function AIPanel() {
         </form>
       </div>
 
-      {showDiff && activeTransactionId && (
-        <DiffViewer
-          txId={activeTransactionId}
-          patchedPaths={diffService.getTransaction(activeTransactionId)?.patchedPaths || []}
-          onClose={() => setShowDiff(false)}
-        />
-      )}
     </div>
   );
 }

@@ -12,20 +12,23 @@ import { memfs } from '../services/memfsService.js';
 import { fsSubscriptions } from '../services/fsSubscriptions.js';
 
 // Serialize memfs tree into a plain-object structure React can diff.
-function serializeTree(node) {
+// Use full paths as ids so UI selection maps cleanly to filesystem paths.
+function serializeTree(node, currentPath = '/') {
   if (node.type === 'file') {
-    return { id: node.id, name: node.name, type: 'file', binary: node.binary ?? false };
+    return { id: currentPath, name: node.name, type: 'file', binary: node.binary ?? false };
   }
   const children = [];
   for (const childNode of node.children.values()) {
-    children.push(serializeTree(childNode));
+    const childPath =
+      currentPath === '/' ? `/${childNode.name}` : `${currentPath}/${childNode.name}`;
+    children.push(serializeTree(childNode, childPath));
   }
   // Sort: Directories first, then alphabetically
   children.sort((a, b) => {
     if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
     return a.name.localeCompare(b.name);
   });
-  return { id: node.id, name: node.name, type: 'dir', children };
+  return { id: currentPath, name: node.name, type: 'dir', children };
 }
 
 export const useFileSystemStore = create((set) => ({

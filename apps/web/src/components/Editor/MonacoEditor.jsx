@@ -11,6 +11,7 @@ import { useFileSystemStore } from '../../stores/fileSystemStore.js';
 import { useAgentStore } from '../../stores/agentStore.js';
 import { useSettingsStore } from '../../stores/settingsStore.js';
 import { fileSystemAPI } from '../../services/fileSystemAPI.js';
+import { bus, Events } from '../../services/eventBus.js';
 import { getLanguageFromExtension } from '@antigv/shared';
 import LargeFileView from './LargeFileView.jsx';
 import {
@@ -19,6 +20,7 @@ import {
   supportsDirectoryPicker,
 } from '../../services/localFileService.js';
 import { workspaceAccessService } from '../../services/workspaceAccessService.js';
+import InlineDiffReview from './InlineDiffReview.jsx';
 
 const contentCache = new Map();
 
@@ -127,6 +129,9 @@ export default function MonacoEditor({ onContentLoad, onCursorPositionChange }) 
   const showLineNumbers = useSettingsStore((s) => s.showLineNumbers);
   const editorRef = useRef(null);
   const currentPathRef = useRef(null);
+  const workspaceState = useFileSystemStore((s) => s.workspaceState);
+  const activeTransactionId = useAgentStore((s) => s.activeTransactionId);
+
   const treeData = useFileSystemStore((s) => s.treeData);
 
   const isBinaryFile = useCallback(() => {
@@ -181,10 +186,31 @@ export default function MonacoEditor({ onContentLoad, onCursorPositionChange }) 
       });
   }, [activeFile, onContentLoad, treeData]);
 
+  // Clear editor content cache on workspace reset
+  useEffect(() => {
+    return bus.on(Events.WS_RESET, () => {
+      contentCache.clear();
+    });
+  }, []);
+
+  useEffect(() => {
+    return bus.on(Events.FS_MUTATED, (payload) => {
+      if (payload?.source === 'commit') {
+        contentCache.clear();
+      }
+    });
+  }, []);
+
   const handleEditorDidMount = useCallback(
     (editor, monaco) => {
       editorRef.current = editor;
       currentPathRef.current = activeFile;
+
+      // Expose monaco globally so contextService can read diagnostics
+      if (typeof window !== 'undefined') {
+        window.monaco = monaco;
+        console.log('[MonacoEditor] ✅ window.monaco exposed for diagnostics');
+      }
 
       if (activeFile && contentCache.has(activeFile)) {
         editor.setValue(contentCache.get(activeFile));
@@ -213,12 +239,33 @@ export default function MonacoEditor({ onContentLoad, onCursorPositionChange }) 
         openFile(tabs[(idx + 1) % tabs.length]);
       });
 
-      editor.onDidChangeCursorPosition((event) => {
+      // ── Cursor position tracking → StatusBar + editorStore ──────────
+      editor.onDidChangeCursorPosition((e) => {
+        const pos = e.position;
+
+        // Get selected text (if any)
+        const selection = editor.getSelection();
+        let selected = '';
+        if (selection && !selection.isEmpty()) {
+          selected = editor.getModel()?.getValueInRange(selection) || '';
+        }
+
+        // Feed StatusBar (existing prop callback)
         onCursorPositionChange?.({
-          lineNumber: event.position.lineNumber,
-          column: event.position.column,
+          lineNumber: pos.lineNumber,
+          column: pos.column,
+        });
+
+        // Feed editorStore → contextService (NEW)
+        useEditorStore.getState().setCursor({
+          line: pos.lineNumber,
+          column: pos.column,
+          selected,
+
         });
       });
+
+      console.log('[MonacoEditor] ✅ Cursor tracking wired to editorStore.setCursor()');
     },
     [activeFile, onCursorPositionChange]
   );
@@ -245,8 +292,20 @@ export default function MonacoEditor({ onContentLoad, onCursorPositionChange }) 
     }
   }, [activeFile]);
 
+  // Add socket for "Open Folder"
+  const socket = useAgentStore((s) => s.socket);
+
+  if (workspaceState === 'DIFF_REVIEW' && activeTransactionId) {
+    return <InlineDiffReview txId={activeTransactionId} />;
+  }
+
   if (!activeFile) {
-    if (!treeData || treeData.length === 0) {
+    const isEmptyWorkspace =
+      !treeData ||
+      treeData.length === 0 ||
+      (treeData.length === 1 && (treeData[0].children?.length ?? 0) === 0);
+
+    if (isEmptyWorkspace) {
       return (
         <InfoPanel
           eyebrow="Workspace"

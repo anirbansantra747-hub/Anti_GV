@@ -20,6 +20,7 @@ import {
   Circle,
 } from 'lucide-react';
 import { useEditorStore } from '../../stores/editorStore.js';
+import { useAgentStore } from '../../stores/agentStore.js';
 import { fileSystemAPI } from '../../services/fileSystemAPI.js';
 
 // ── Icon map by extension ──────────────────────────────────────────────────────
@@ -120,6 +121,7 @@ export default function FileNode({ node, style, dragHandle }) {
   const inputRef = useRef(null);
 
   const dirtyFiles = useEditorStore((s) => s.dirtyFiles);
+  const socket = useAgentStore((s) => s.socket);
   const isDirty = node.data.type === 'file' && dirtyFiles.has(node.id);
   const isDir = node.data.type === 'dir';
 
@@ -141,6 +143,12 @@ export default function FileNode({ node, style, dragHandle }) {
     const newPath = '/' + segments.join('/');
     try {
       fileSystemAPI.renameFile(node.id, newPath, { sourceModule: 'UI' });
+      // Also persist to disk via socket
+      if (socket) {
+        socket.emit('fs:rename', { oldPath: node.id, newPath }, (res) => {
+          if (!res?.success) console.error('[FileNode] Disk rename failed:', res?.error);
+        });
+      }
       // Update open tab if this file was open
       const store = useEditorStore.getState();
       if (store.activeFile === node.id) {
@@ -156,6 +164,12 @@ export default function FileNode({ node, style, dragHandle }) {
     try {
       fileSystemAPI.deleteFile(node.id);
       useEditorStore.getState().closeTab(node.id);
+      // Also delete on disk via socket
+      if (socket) {
+        socket.emit('fs:delete', { path: node.id }, (res) => {
+          if (!res?.success) console.error('[FileNode] Disk delete failed:', res?.error);
+        });
+      }
     } catch (err) {
       console.error('[FileNode] Delete failed:', err);
     }
@@ -178,7 +192,10 @@ export default function FileNode({ node, style, dragHandle }) {
           transition: 'all 0.1s ease',
         }}
         ref={dragHandle}
-        onClick={() => (isDir ? node.toggle() : null)}
+        onClick={() => {
+          node.select();
+          if (isDir) node.toggle();
+        }}
         onContextMenu={(e) => {
           e.preventDefault();
           setCtxMenu({ x: e.clientX, y: e.clientY });
