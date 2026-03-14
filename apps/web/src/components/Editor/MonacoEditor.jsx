@@ -1,12 +1,7 @@
 /* eslint-disable no-unused-vars */
 /**
  * @file MonacoEditor.jsx
- * @description Monaco Editor wrapper wired to the fileSystemAPI and editorStore.
- *
- * - Reads file content from fileSystemAPI when activeFile changes.
- * - Writes changes back via fileSystemAPI and marks the file dirty in editorStore.
- * - Ctrl+S triggers a manual persist notification (IDB save is already auto-debounced).
- * - Language is detected from file extension via getLanguageFromExtension.
+ * @description Monaco Editor wrapper with stronger empty states and local-save support.
  */
 
 import React, { useEffect, useRef, useCallback } from 'react';
@@ -14,75 +9,156 @@ import Editor from '@monaco-editor/react';
 import { useEditorStore } from '../../stores/editorStore.js';
 import { useFileSystemStore } from '../../stores/fileSystemStore.js';
 import { useAgentStore } from '../../stores/agentStore.js';
+import { useSettingsStore } from '../../stores/settingsStore.js';
 import { fileSystemAPI } from '../../services/fileSystemAPI.js';
 import { getLanguageFromExtension } from '@antigv/shared';
 import LargeFileView from './LargeFileView.jsx';
+import {
+  openDirectoryViaFSA,
+  openFilesViaInput,
+  supportsDirectoryPicker,
+} from '../../services/localFileService.js';
+import { workspaceAccessService } from '../../services/workspaceAccessService.js';
 
-// Shared content cache to avoid redundant reads
-const contentCache = new Map(); // path → string
+const contentCache = new Map();
 
 function getBasename(path) {
   return path ? path.split('/').pop() : '';
 }
 
+function InfoPanel({ eyebrow, title, detail, meta = [], actions = null }) {
+  return (
+    <div
+      style={{
+        flex: 1,
+        display: 'grid',
+        placeItems: 'center',
+        padding: '32px',
+        background:
+          'linear-gradient(180deg, rgba(255,255,255,0.02), transparent 18%), rgba(8,11,16,0.82)',
+      }}
+    >
+      <div
+        style={{
+          width: 'min(760px, 100%)',
+          border: '1px solid var(--panel-border)',
+          background: 'rgba(17,21,27,0.96)',
+          boxShadow: '8px 8px 0 rgba(0,0,0,0.72)',
+          padding: '24px',
+          display: 'grid',
+          gap: 18,
+        }}
+      >
+        <div style={{ display: 'grid', gap: 8 }}>
+          <span
+            style={{
+              fontSize: 11,
+              color: 'var(--accent)',
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              fontWeight: 700,
+            }}
+          >
+            {eyebrow}
+          </span>
+          <h2
+            style={{
+              margin: 0,
+              fontSize: 'clamp(1.8rem, 4vw, 3rem)',
+              lineHeight: 0.95,
+              letterSpacing: '-0.05em',
+              color: 'var(--text-primary)',
+            }}
+          >
+            {title}
+          </h2>
+          <p style={{ margin: 0, fontSize: 14, color: 'var(--text-secondary)', maxWidth: 560 }}>
+            {detail}
+          </p>
+        </div>
+
+        {meta.length ? (
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+              gap: 10,
+            }}
+          >
+            {meta.map((item) => (
+              <div
+                key={item.label}
+                style={{
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  background: 'rgba(255,255,255,0.03)',
+                  padding: '12px 14px',
+                  display: 'grid',
+                  gap: 4,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 10,
+                    color: 'var(--text-muted)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.1em',
+                  }}
+                >
+                  {item.label}
+                </span>
+                <strong style={{ color: 'var(--text-primary)', fontSize: 13 }}>{item.value}</strong>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {actions}
+      </div>
+    </div>
+  );
+}
+
 export default function MonacoEditor({ onContentLoad, onCursorPositionChange }) {
   const activeFile = useEditorStore((s) => s.activeFile);
+  const openTabs = useEditorStore((s) => s.openTabs);
   const markDirty = useEditorStore((s) => s.markDirty);
+  const editorFontSize = useSettingsStore((s) => s.editorFontSize);
+  const wordWrap = useSettingsStore((s) => s.wordWrap);
+  const showLineNumbers = useSettingsStore((s) => s.showLineNumbers);
   const editorRef = useRef(null);
-  const monacoRef = useRef(null);
   const currentPathRef = useRef(null);
-
-  // Check if active file is binary/large — route to LargeFileView
   const treeData = useFileSystemStore((s) => s.treeData);
+
   const isBinaryFile = useCallback(() => {
     if (!activeFile || !treeData.length) return false;
+
     function findNode(nodes, path) {
-      for (const n of nodes) {
-        const nPath = n.id || `/${n.name}`;
-        if (n.type === 'file' && n.id === path) return n;
-        if (n.children) {
-          const r = findNode(n.children, path);
-          if (r) return r;
+      for (const node of nodes) {
+        if (node.type === 'file' && node.id === path) return node;
+        if (node.children) {
+          const found = findNode(node.children, path);
+          if (found) return found;
         }
       }
       return null;
     }
-    const node = findNode(treeData, activeFile);
-    return node?.binary === true;
+
+    return findNode(treeData, activeFile)?.binary === true;
   }, [activeFile, treeData]);
 
-  // Detect language from file extension
   const language = activeFile
     ? getLanguageFromExtension(getBasename(activeFile)) || 'plaintext'
     : 'plaintext';
 
-  // Load file content when activeFile changes. Wait for treeData to populate on initial load
-  // to prevent race conditions where we request a file before IDB hydration completes.
   useEffect(() => {
     if (!activeFile) return;
 
-    // Check if the file exists in treeData. If treeData is empty or doesn't have it, we might be still hydrating.
-    // However, if the file genuinely doesn't exist, we eventually need to clear it.
-    // As a simple heuristic, if treeData has only the root '/' or is empty, we delay the read.
     const isHydrating =
       !treeData ||
       treeData.length === 0 ||
       (treeData.length === 1 && treeData[0].children?.length === 0);
 
-    if (isHydrating && !contentCache.has(activeFile)) {
-      return; // Wait for IDB hydration
-    }
-
-    if (contentCache.has(activeFile)) {
-      if (editorRef.current) {
-        const currentVal = editorRef.current.getValue();
-        const cachedVal = contentCache.get(activeFile);
-        if (currentVal !== cachedVal) {
-          editorRef.current.setValue(cachedVal);
-        }
-      }
-      return;
-    }
+    if (isHydrating && !contentCache.has(activeFile)) return;
 
     fileSystemAPI
       .readFile(activeFile)
@@ -96,7 +172,6 @@ export default function MonacoEditor({ onContentLoad, onCursorPositionChange }) 
         onContentLoad?.(content);
       })
       .catch(() => {
-        // New file or genuinely missing — start empty
         contentCache.set(activeFile, '');
         if (editorRef.current && currentPathRef.current === activeFile) {
           if (editorRef.current.getValue() !== '') {
@@ -104,61 +179,48 @@ export default function MonacoEditor({ onContentLoad, onCursorPositionChange }) 
           }
         }
       });
-  }, [activeFile, treeData]);
+  }, [activeFile, onContentLoad, treeData]);
 
   const handleEditorDidMount = useCallback(
     (editor, monaco) => {
       editorRef.current = editor;
-      monacoRef.current = monaco;
       currentPathRef.current = activeFile;
 
-      // Load content if already cached
       if (activeFile && contentCache.has(activeFile)) {
         editor.setValue(contentCache.get(activeFile));
       }
 
-      // Ctrl+S shortcut
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-        console.log('[MonacoEditor] Ctrl+S — Saving to real disk.');
-        const { activeFile, clearDirty } = useEditorStore.getState();
+        const { activeFile: filePath, clearDirty } = useEditorStore.getState();
         const { socket } = useAgentStore.getState();
-        if (!activeFile || !socket) return;
+        if (!filePath) return;
 
-        const currentVal = editor.getValue();
-        socket.emit('fs:write', { path: activeFile, content: currentVal }, (response) => {
-          if (!response?.success) {
-            console.error('[MonacoEditor] Save failed:', response?.error);
-          } else {
-            console.log(`[MonacoEditor] Successfully saved ${activeFile} to disk.`);
-            clearDirty(activeFile);
-          }
-        });
+        workspaceAccessService
+          .saveFile(filePath, editor.getValue(), socket)
+          .then(() => clearDirty(filePath))
+          .catch((error) => console.error('[MonacoEditor] Save failed:', error.message));
       });
 
-      // Ctrl+W — close active tab
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyW, () => {
-        const { activeFile, closeTab } = useEditorStore.getState();
-        if (activeFile) closeTab(activeFile);
+        const { activeFile: filePath, closeTab } = useEditorStore.getState();
+        if (filePath) closeTab(filePath);
       });
 
-      // Ctrl+Tab — cycle to next tab
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Tab, () => {
-        const { openTabs, activeFile, openFile } = useEditorStore.getState();
-        if (openTabs.length < 2) return;
-        const idx = openTabs.indexOf(activeFile);
-        const next = openTabs[(idx + 1) % openTabs.length];
-        openFile(next);
+        const { openTabs: tabs, activeFile: filePath, openFile } = useEditorStore.getState();
+        if (tabs.length < 2) return;
+        const idx = tabs.indexOf(filePath);
+        openFile(tabs[(idx + 1) % tabs.length]);
       });
 
-      // Cursor position tracking → StatusBar
-      editor.onDidChangeCursorPosition((e) => {
+      editor.onDidChangeCursorPosition((event) => {
         onCursorPositionChange?.({
-          lineNumber: e.position.lineNumber,
-          column: e.position.column,
+          lineNumber: event.position.lineNumber,
+          column: event.position.column,
         });
       });
     },
-    [activeFile]
+    [activeFile, onCursorPositionChange]
   );
 
   const handleChange = useCallback(
@@ -166,8 +228,6 @@ export default function MonacoEditor({ onContentLoad, onCursorPositionChange }) 
       if (!activeFile || newValue === undefined) return;
       contentCache.set(activeFile, newValue);
       markDirty(activeFile);
-
-      // Write to Tier 1 (triggers debounced IDB save via eventBus)
       fileSystemAPI
         .writeFile(activeFile, newValue, { sourceModule: 'UI' })
         .catch((err) => console.error('[MonacoEditor] Write failed:', err));
@@ -175,10 +235,8 @@ export default function MonacoEditor({ onContentLoad, onCursorPositionChange }) 
     [activeFile, markDirty]
   );
 
-  // Keep currentPathRef in sync for the mount callback
   useEffect(() => {
     currentPathRef.current = activeFile;
-    // When file switches, reload the editor value
     if (editorRef.current && activeFile) {
       const cached = contentCache.get(activeFile);
       if (cached !== undefined && editorRef.current.getValue() !== cached) {
@@ -187,92 +245,70 @@ export default function MonacoEditor({ onContentLoad, onCursorPositionChange }) 
     }
   }, [activeFile]);
 
-  // Add socket for "Open Folder"
-  const socket = useAgentStore((s) => s.socket);
-
   if (!activeFile) {
     if (!treeData || treeData.length === 0) {
-      // No folder opened yet — show VS Code style big button
       return (
-        <div
-          style={{
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#334155',
-            gap: 20,
-          }}
-        >
-          <div style={{ fontSize: 64, color: '#1e293b' }}>📂</div>
-          <h2 style={{ fontSize: 24, margin: 0, color: '#94a3b8', fontWeight: 500 }}>
-            Anti_GV IDE
-          </h2>
-          <p style={{ fontSize: 14, margin: 0, color: 'var(--text-muted)' }}>
-            You have not yet opened a folder.
-          </p>
-          <button
-            onClick={() => socket?.emit('fs:pick_folder')}
-            style={{
-              background: '#0e639c',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '4px',
-              padding: '12px 24px',
-              fontSize: '16px',
-              cursor: 'pointer',
-              fontFamily: 'var(--font-ui)',
-              transition: 'background 0.1s',
-              marginTop: '10px',
-            }}
-            onMouseEnter={(e) => (e.target.style.background = '#1177bb')}
-            onMouseLeave={(e) => (e.target.style.background = '#0e639c')}
-          >
-            Open Folder
-          </button>
-        </div>
+        <InfoPanel
+          eyebrow="Workspace"
+          title="Open a folder to start coding."
+          detail="The editor is ready, but there is no workspace mounted yet. Open a folder or import files and the first readable file will be focused automatically."
+          meta={[
+            { label: 'Save target', value: 'No folder linked' },
+            { label: 'Quick open', value: 'Ctrl+P' },
+            {
+              label: 'Import mode',
+              value: supportsDirectoryPicker ? 'Direct folder open' : 'Fallback file import',
+            },
+          ]}
+          actions={
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button
+                className="brutalist-button"
+                onClick={() => {
+                  if (supportsDirectoryPicker) {
+                    openDirectoryViaFSA().catch((error) =>
+                      console.error('[MonacoEditor] Open folder failed:', error)
+                    );
+                    return;
+                  }
+
+                  openFilesViaInput({ directory: true }).catch((error) =>
+                    console.error('[MonacoEditor] Open folder import failed:', error)
+                  );
+                }}
+              >
+                Open Folder
+              </button>
+              <button
+                className="brutalist-button ghost"
+                onClick={() =>
+                  openFilesViaInput({ multiple: true }).catch((error) =>
+                    console.error('[MonacoEditor] Open files import failed:', error)
+                  )
+                }
+              >
+                Import Files
+              </button>
+            </div>
+          }
+        />
       );
     }
 
-    // Folder is opened, but no active file
     return (
-      <div
-        style={{
-          flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: '#334155',
-          gap: 12,
-        }}
-      >
-        <div style={{ fontSize: 48 }}>📄</div>
-        <p style={{ fontSize: 14, margin: 0, color: 'var(--text-muted)' }}>
-          Open a file from the file tree
-        </p>
-        <p style={{ fontSize: 12, color: '#1e293b', margin: 0 }}>
-          or press{' '}
-          <kbd
-            style={{
-              background: '#1e293b',
-              border: '1px solid #334155',
-              borderRadius: 3,
-              padding: '1px 5px',
-              color: '#64748b',
-              fontSize: 11,
-            }}
-          >
-            Ctrl+P
-          </kbd>{' '}
-          to quick-open
-        </p>
-      </div>
+      <InfoPanel
+        eyebrow="Editor"
+        title="Pick a file to inspect or edit."
+        detail="The workspace is loaded. Use the file tree, quick open, or upload more files to bring code into focus."
+        meta={[
+          { label: 'Open tabs', value: String(openTabs.length) },
+          { label: 'Search', value: 'Ctrl+P' },
+          { label: 'State', value: 'Awaiting active file' },
+        ]}
+      />
     );
   }
 
-  // Binary / large files bypass Monaco
   if (isBinaryFile()) {
     return <LargeFileView path={activeFile} />;
   }
@@ -285,21 +321,26 @@ export default function MonacoEditor({ onContentLoad, onCursorPositionChange }) 
       onChange={handleChange}
       onMount={handleEditorDidMount}
       options={{
-        fontSize: 14,
-        fontFamily: '"JetBrains Mono", "Cascadia Code", "Fira Code", monospace',
+        fontSize: editorFontSize,
+        fontFamily: '"IBM Plex Mono", "JetBrains Mono", "Cascadia Code", monospace',
         fontLigatures: true,
         minimap: { enabled: false },
         scrollBeyondLastLine: false,
-        wordWrap: 'on',
+        wordWrap,
         tabSize: 2,
-        padding: { top: 12 },
+        padding: { top: 16 },
         smoothScrolling: true,
         cursorBlinking: 'smooth',
         renderLineHighlight: 'gutter',
-        lineNumbers: 'on',
+        lineNumbers: showLineNumbers ? 'on' : 'off',
         glyphMargin: false,
         folding: true,
         automaticLayout: true,
+        overviewRulerBorder: false,
+        scrollbar: {
+          verticalScrollbarSize: 10,
+          horizontalScrollbarSize: 10,
+        },
       }}
     />
   );

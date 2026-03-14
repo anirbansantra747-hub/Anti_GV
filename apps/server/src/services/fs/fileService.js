@@ -75,17 +75,41 @@ export const exists = async (targetPath) => {
 };
 
 /**
- * Lists directory contents (non-recursive by default for standard fs:list)
+ * Lists directory contents
  */
-export const listDir = async (targetPath) => {
+export const listDir = async (targetPath, recursive = false) => {
   const safePath = resolveSafePath(targetPath);
-  const dirents = await fs.readdir(safePath, { withFileTypes: true });
 
-  return dirents.map((dirent) => ({
-    name: dirent.name,
-    type: dirent.isDirectory() ? 'dir' : 'file',
-    path: path.relative(workspaceRoot, path.join(safePath, dirent.name)).replace(/\\/g, '/'),
-  }));
+  if (!recursive) {
+    const dirents = await fs.readdir(safePath, { withFileTypes: true });
+    return dirents.map((dirent) => ({
+      name: dirent.name,
+      type: dirent.isDirectory() ? 'dir' : 'file',
+      path: path.relative(workspaceRoot, path.join(safePath, dirent.name)).replace(/\\/g, '/'),
+    }));
+  }
+
+  const results = [];
+  const walk = async (currentPath) => {
+    const dirents = await fs.readdir(currentPath, { withFileTypes: true });
+    for (const dirent of dirents) {
+      if (['node_modules', '.git', '.turbo', 'dist', '.cache'].includes(dirent.name)) continue;
+
+      const fullPath = path.join(currentPath, dirent.name);
+      results.push({
+        name: dirent.name,
+        type: dirent.isDirectory() ? 'dir' : 'file',
+        path: path.relative(workspaceRoot, fullPath).replace(/\\/g, '/'),
+      });
+
+      if (dirent.isDirectory()) {
+        await walk(fullPath);
+      }
+    }
+  };
+
+  await walk(safePath);
+  return results;
 };
 
 /**

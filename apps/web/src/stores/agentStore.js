@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { io } from 'socket.io-client';
-import { contextService } from '../services/contextService.js'; // Teammate's context gatherer
+import { contextService } from '../services/contextService.js';
+import { fileSystemAPI } from '../services/fileSystemAPI.js';
+import { workspaceAccessService } from '../services/workspaceAccessService.js';
 import { useEditorStore } from './editorStore.js';
 
 const SOCKET_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -11,10 +13,12 @@ export const useAgentStore = create((set, get) => {
   return {
     socket: null,
     isConnected: false,
-    messages: [], // { id, role, content, type: 'text' | 'plan' | 'code' | 'error', data?: any }
+    messages: [],
     isThinking: false,
     thinkingMessage: '',
     currentPlan: null,
+    activeTransactionId: null,
+    activeTransactionFiles: [],
 
     connect: () => {
       if (socket) return;
@@ -34,6 +38,11 @@ export const useAgentStore = create((set, get) => {
           const { syncRealDiskToMemfs } = await import('../services/initSyncService.js');
           const { useEditorStore } = await import('./editorStore.js');
 
+          workspaceAccessService.clear({
+            mode: 'backend',
+            label: payload.newRoot,
+            description: 'Saving through the backend workspace root.',
+          });
           useEditorStore.getState().closeAllTabs();
           await syncRealDiskToMemfs();
         } catch (err) {
@@ -64,27 +73,23 @@ export const useAgentStore = create((set, get) => {
         const state = get();
         let currentTxId = state.activeTransactionId;
 
-        // 1. Begin a transaction if we don't have one open
         if (!currentTxId) {
-          // Try to import diffService dynamically or safely
           try {
             const { diffService } = await import('../services/diffService.js');
             currentTxId = diffService.beginTransaction();
             set({ activeTransactionId: currentTxId });
-          } catch (e) {
-            console.error('DiffService not ready yet', e);
+          } catch (error) {
+            console.error('DiffService not ready yet', error);
           }
         }
 
         try {
-          // 2. Parse the edits
           const parsedChunk = JSON.parse(payload.chunk);
+          const rawPath = payload.file || 'unknown.js';
+          const absolutePath = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
+
           if (parsedChunk && parsedChunk.edits && currentTxId) {
             const { diffService } = await import('../services/diffService.js');
-
-            // Format the edits into the FilePatch shape expected by DiffService
-            const rawPath = payload.file || 'unknown.js';
-            const absolutePath = rawPath.startsWith('/') ? rawPath : '/' + rawPath;
 
             const patch = {
               path: absolutePath,
@@ -95,27 +100,31 @@ export const useAgentStore = create((set, get) => {
               })),
             };
 
-            // Apply patch to shadow tree
             await diffService.applyPatch(currentTxId, patch, 'AI_AGENT');
           }
 
-          set((state) => ({
+          set((nextState) => ({
+            activeTransactionFiles: nextState.activeTransactionFiles.includes(absolutePath)
+              ? nextState.activeTransactionFiles
+              : [...nextState.activeTransactionFiles, absolutePath],
             messages: [
-              ...state.messages,
+              ...nextState.messages,
               {
                 id: Date.now(),
                 role: 'assistant',
                 type: 'code',
-                content: `Staged edits for ${payload.file || 'file'} in Shadow Tree (TX: ${currentTxId ? currentTxId.substring(0, 6) : 'none'})`,
+                content: `Staged edits for ${absolutePath} in review transaction ${
+                  currentTxId ? currentTxId.substring(0, 6) : 'none'
+                }.`,
                 criticFeedback: payload.criticFeedback,
               },
             ],
           }));
         } catch (err) {
           console.error('[AgentStore] Failed to apply edit to Shadow Tree:', err);
-          set((state) => ({
+          set((nextState) => ({
             messages: [
-              ...state.messages,
+              ...nextState.messages,
               {
                 id: Date.now(),
                 role: 'assistant',
@@ -172,7 +181,6 @@ export const useAgentStore = create((set, get) => {
             };
           }
 
-          // Fallback if no messageId was provided but there's a final message
           return {
             isThinking: false,
             thinkingMessage: '',
@@ -207,7 +215,6 @@ export const useAgentStore = create((set, get) => {
     sendPrompt: async (prompt) => {
       if (!prompt.trim() || !socket) return;
 
-      // Add user message to UI
       set((state) => ({
         messages: [
           ...state.messages,
@@ -218,7 +225,6 @@ export const useAgentStore = create((set, get) => {
       }));
 
       try {
-        // Call teammate's service to get context
         const editorState = useEditorStore.getState();
         const { contextString } = await contextService.buildContext({
           activeFile: editorState.activeFile,
@@ -263,20 +269,34 @@ export const useAgentStore = create((set, get) => {
 
     approveTransaction: async () => {
       const txId = get().activeTransactionId;
+      const socketRef = get().socket;
       if (!txId) return;
 
       try {
         const { diffService } = await import('../services/diffService.js');
+        const tx = diffService.getTransaction(txId);
+        const patchedPaths = tx?.patchedPaths ?? [];
+
         await diffService.commit(txId);
+
+        for (const path of patchedPaths) {
+          const content = await fileSystemAPI.readFile(path);
+          await workspaceAccessService.saveFile(path, content, socketRef);
+          useEditorStore.getState().clearDirty(path);
+        }
+
         set((state) => ({
           activeTransactionId: null,
+          activeTransactionFiles: [],
           messages: [
             ...state.messages,
             {
               id: Date.now(),
               role: 'assistant',
               type: 'text',
-              content: '✅ Code changes applied to standard workspace. Transaction committed.',
+              content: `Applied and saved ${patchedPaths.length} AI change${
+                patchedPaths.length === 1 ? '' : 's'
+              }.`,
             },
           ],
         }));
@@ -305,13 +325,14 @@ export const useAgentStore = create((set, get) => {
         diffService.rollback(txId);
         set((state) => ({
           activeTransactionId: null,
+          activeTransactionFiles: [],
           messages: [
             ...state.messages,
             {
               id: Date.now(),
               role: 'assistant',
               type: 'text',
-              content: '❌ Code changes discarded. Transaction rolled back.',
+              content: 'Discarded the staged AI edits.',
             },
           ],
         }));

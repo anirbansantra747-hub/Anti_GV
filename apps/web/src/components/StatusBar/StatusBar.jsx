@@ -8,6 +8,7 @@
 import React, { useEffect, useState } from 'react';
 import { useEditorStore } from '../../stores/editorStore.js';
 import { useFileSystemStore } from '../../stores/fileSystemStore.js';
+import { useAgentStore } from '../../stores/agentStore.js';
 
 const LANG_MAP = {
   js: 'JavaScript',
@@ -50,10 +51,12 @@ const STATE_COLORS = {
 export default function StatusBar({ tabRole = 'unknown', isConnected = false, cursorPos = null }) {
   const activeFile = useEditorStore((s) => s.activeFile);
   const workspaceState = useFileSystemStore((s) => s.workspaceState) || 'IDLE';
+  const socketConnected = useAgentStore((s) => s.isConnected);
 
   const lang = getLang(activeFile);
   const stateColor = STATE_COLORS[workspaceState] || 'var(--green)';
-  const connColor = isConnected ? 'var(--green)' : 'var(--red)';
+  const online = socketConnected || isConnected;
+  const connColor = online ? 'var(--green)' : 'var(--red)';
 
   const cellStyle = {
     display: 'flex',
@@ -95,7 +98,7 @@ export default function StatusBar({ tabRole = 'unknown', isConnected = false, cu
           borderRight: `1px solid ${connColor}20`,
           color: connColor,
         }}
-        title={isConnected ? 'Server connected' : 'Server disconnected'}
+        title={online ? 'Server connected' : 'Server disconnected'}
       >
         <span
           style={{
@@ -104,11 +107,11 @@ export default function StatusBar({ tabRole = 'unknown', isConnected = false, cu
             borderRadius: '50%',
             background: connColor,
             flexShrink: 0,
-            boxShadow: isConnected ? `0 0 6px ${connColor}` : 'none',
-            animation: isConnected ? 'none' : 'pulse 1.4s ease-in-out infinite',
+            boxShadow: online ? `0 0 6px ${connColor}` : 'none',
+            animation: online ? 'none' : 'pulse 1.4s ease-in-out infinite',
           }}
         />
-        {isConnected ? 'Connected' : 'Offline'}
+        {online ? 'Connected' : 'Offline'}
       </div>
 
       {/* Workspace state */}
