@@ -199,3 +199,62 @@ function _dedup(markers) {
     return true;
   });
 }
+
+// ── Linters ──────────────────────────────────────────────────────────────
+
+/**
+ * Parse output from various linters into ErrorMarkers.
+ *
+ * @param {string} rawOutput  - stdout/stderr from the linter
+ * @param {string} parserType - 'eslint' | 'pylint' | 'go'
+ * @param {number} exitCode   - Linter exit code (often 1 on lint failure)
+ * @returns {ErrorMarker[]}
+ */
+export function parseLintOutput(rawOutput, parserType, exitCode) {
+  if (!rawOutput || !rawOutput.trim()) return [];
+
+  const markers = [];
+
+  try {
+    if (parserType === 'eslint') {
+      // ESLint returns JSON array: [{"filePath":"...","messages":[{"ruleId":"...",severity:2,message:"...",line:1,column:1}]}]
+      const parsed = JSON.parse(rawOutput);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        for (const msg of parsed[0].messages || []) {
+          markers.push({
+            line: msg.line || 1,
+            col: msg.column || 0,
+            message: `${msg.message} ${msg.ruleId ? `(${msg.ruleId})` : ''}`,
+            severity: msg.severity === 2 ? 'error' : 'warning',
+          });
+        }
+      }
+    } else if (parserType === 'pylint') {
+      // PyLint JSON: [{"type":"warning","module":"...","obj":"","line":1,"column":0,"endLine":1,"endColumn":10,"path":"...","symbol":"...","message":"...","message-id":"..."}]
+      const parsed = JSON.parse(rawOutput);
+      if (Array.isArray(parsed)) {
+        for (const msg of parsed) {
+          // Map pylint types to our severity
+          const sev = ['error', 'fatal'].includes(msg.type) ? 'error' : 'warning';
+          markers.push({
+            line: msg.line || 1,
+            col: msg.column || 0,
+            message: `${msg.message} (${msg.symbol})`,
+            severity: sev,
+          });
+        }
+      }
+    } else if (parserType === 'go') {
+      // go vet: "./main.go:4:2: Println call has possible formatting directive..."
+      return _parseGo(rawOutput);
+    }
+  } catch (err) {
+    console.error(`[errorParser] Failed to parse ${parserType} output:`, err);
+    // If JSON parsing fails but there is an error code, fallback to generic parsing
+    if (exitCode !== 0) {
+      return _parseGeneric(rawOutput);
+    }
+  }
+
+  return markers;
+}
