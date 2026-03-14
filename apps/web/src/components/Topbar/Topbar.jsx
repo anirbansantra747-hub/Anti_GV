@@ -1,19 +1,25 @@
 /* eslint-disable no-unused-vars */
 /**
  * @file Topbar.jsx
- * @description Sleek, transparent Top navigation bar using Lucide icons.
+ * @description Top navigation for workspace open/save state.
  */
 
 import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { Save, CheckCircle, XCircle, Loader, Zap, History, Menu } from 'lucide-react';
 import { useFileSystemStore } from '../../stores/fileSystemStore.js';
 import { useAgentStore } from '../../stores/agentStore.js';
-import { remoteSync } from '../../services/remoteSync.js';
+import { useEditorStore } from '../../stores/editorStore.js';
+import { useSessionStore } from '../../stores/sessionStore.js';
+import { useWorkspaceAccessStore } from '../../stores/workspaceAccessStore.js';
 import {
   openDirectoryViaFSA,
+  openFilesViaFSA,
   openFilesViaInput,
   supportsDirectoryPicker,
+  supportsFileSystemAccess,
 } from '../../services/localFileService.js';
+import { fileSystemAPI } from '../../services/fileSystemAPI.js';
+import { workspaceAccessService } from '../../services/workspaceAccessService.js';
 
 const HistoryDrawer = lazy(() => import('../History/HistoryDrawer.jsx'));
 
@@ -26,9 +32,17 @@ const STATE_CONFIG = {
   ERROR: { color: 'var(--red)', label: 'ERROR' },
 };
 
+const SAVE_ICONS = {
+  idle: { Icon: Save, color: 'var(--accent)', label: 'Save File' },
+  saving: { Icon: Loader, color: '#94a3b8', label: 'Saving...' },
+  saved: { Icon: CheckCircle, color: '#4ade80', label: 'Saved' },
+  error: { Icon: XCircle, color: '#f87171', label: 'Failed' },
+};
+
 function StateBadge({ state }) {
   const cfg = STATE_CONFIG[state] || STATE_CONFIG.IDLE;
   const isAnimated = state !== 'IDLE';
+
   return (
     <div
       style={{
@@ -60,24 +74,21 @@ function StateBadge({ state }) {
   );
 }
 
-const SAVE_ICONS = {
-  idle: { Icon: Save, color: 'var(--accent)', label: 'Save' },
-  saving: { Icon: Loader, color: '#94a3b8', label: 'Saving…' },
-  saved: { Icon: CheckCircle, color: '#4ade80', label: 'Saved' },
-  error: { Icon: XCircle, color: '#f87171', label: 'Failed' },
-};
-
-export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false }) {
+export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false, onNavigate }) {
   const workspaceState = useFileSystemStore((s) => s.workspaceState);
-  const workspaceVersion = useFileSystemStore((s) => s.workspaceVersion);
   const socket = useAgentStore((s) => s.socket);
+  const activeFile = useEditorStore((s) => s.activeFile);
+  const dirtyFiles = useEditorStore((s) => s.dirtyFiles);
+  const clearDirty = useEditorStore((s) => s.clearDirty);
+  const source = useWorkspaceAccessStore((s) => s.source);
+  const profile = useSessionStore((s) => s.profile);
+
   const [saveStatus, setSaveStatus] = useState('idle');
   const [showRecovered, setShowRecovered] = useState(recoveredFromIDB);
   const [showHistory, setShowHistory] = useState(false);
   const [showFileMenu, setShowFileMenu] = useState(false);
   const fileMenuRef = useRef(null);
 
-  // Close file menu on outside click
   useEffect(() => {
     if (!showFileMenu) return;
     const handler = (e) => {
@@ -93,21 +104,48 @@ export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false }
     return () => clearTimeout(t);
   }, [recoveredFromIDB]);
 
+  const openFolder = () => {
+    if (supportsDirectoryPicker) {
+      openDirectoryViaFSA().catch((error) => console.error('[Topbar] Open folder failed:', error));
+      return;
+    }
+
+    openFilesViaInput({ directory: true }).catch((error) =>
+      console.error('[Topbar] Open folder import failed:', error)
+    );
+  };
+
+  const openFiles = () => {
+    if (supportsFileSystemAccess) {
+      openFilesViaFSA().catch((error) => console.error('[Topbar] Open files failed:', error));
+      return;
+    }
+
+    openFilesViaInput({ multiple: true }).catch((error) =>
+      console.error('[Topbar] Open files import failed:', error)
+    );
+  };
+
   const handleSave = async () => {
-    if (saveStatus === 'saving') return;
+    if (saveStatus === 'saving' || !activeFile) return;
+
     setSaveStatus('saving');
     try {
-      await remoteSync.push();
+      const content = await fileSystemAPI.readFile(activeFile);
+      await workspaceAccessService.saveFile(activeFile, content, socket);
+      clearDirty(activeFile);
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2200);
-    } catch (err) {
-      console.error('[Topbar] Remote sync failed:', err);
+    } catch (error) {
+      console.error('[Topbar] Save failed:', error);
       setSaveStatus('error');
       setTimeout(() => setSaveStatus('idle'), 3000);
     }
   };
 
   const { Icon: SaveIcon, color: saveColor, label: saveLabel } = SAVE_ICONS[saveStatus];
+  const targetMeta = activeFile ? workspaceAccessService.describeTarget(activeFile) : null;
+  const activeDirty = activeFile ? dirtyFiles.has(activeFile) : false;
 
   return (
     <>
@@ -129,7 +167,6 @@ export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false }
           zIndex: 20,
         }}
       >
-        {/* Hamburger / File menu */}
         <div ref={fileMenuRef} style={{ position: 'relative' }}>
           <button
             onClick={() => setShowFileMenu((v) => !v)}
@@ -143,17 +180,6 @@ export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false }
               borderRadius: 0,
               display: 'flex',
               alignItems: 'center',
-              transition: 'background 0.1s, border-color 0.1s',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'var(--panel-bg)';
-              e.currentTarget.style.borderColor = 'var(--panel-border)';
-            }}
-            onMouseLeave={(e) => {
-              if (!showFileMenu) {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.borderColor = 'transparent';
-              }
             }}
           >
             <Menu size={18} strokeWidth={2} />
@@ -170,28 +196,16 @@ export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false }
                 border: '1px solid #334155',
                 borderRadius: '6px',
                 padding: '4px 0',
-                minWidth: '200px',
+                minWidth: '220px',
                 boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
                 zIndex: 1000,
               }}
             >
               {[
-                {
-                  label: '📂  Open Folder…',
-                  action: () => {
-                    if (supportsDirectoryPicker) {
-                      openDirectoryViaFSA().catch((err) =>
-                        console.error('[Topbar] Open Folder Error:', err)
-                      );
-                    } else {
-                      openFilesViaInput({ directory: true }).catch((err) =>
-                        console.error('[Topbar] Open Folder Error:', err)
-                      );
-                    }
-                  },
-                },
+                { label: 'Open Folder...', action: openFolder },
+                { label: 'Open File...', action: openFiles },
                 { divider: true },
-                { label: '💾  Save', action: () => handleSave(), kbd: 'Ctrl+S' },
+                { label: 'Save Active File', action: handleSave, kbd: 'Ctrl+S' },
               ].map((item, i) =>
                 item.divider ? (
                   <div key={i} style={{ height: 1, background: '#334155', margin: '4px 0' }} />
@@ -214,7 +228,6 @@ export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false }
                       fontSize: '13px',
                       cursor: 'pointer',
                       fontFamily: 'inherit',
-                      transition: 'background 0.1s',
                     }}
                     onMouseEnter={(e) =>
                       (e.currentTarget.style.background = 'rgba(56,189,248,0.1)')
@@ -230,7 +243,6 @@ export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false }
           )}
         </div>
 
-        {/* Logo (Brutalist) */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginRight: 16 }}>
           <div
             style={{
@@ -246,23 +258,51 @@ export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false }
           >
             <Zap size={16} color="#000000" strokeWidth={3} />
           </div>
-          <span
-            style={{
-              fontWeight: 700,
-              fontSize: 18,
-              letterSpacing: '-0.05em',
-              textTransform: 'uppercase',
-              color: 'var(--text-primary)',
-            }}
-          >
-            Anti_GV
-          </span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span
+              style={{
+                fontWeight: 700,
+                fontSize: 18,
+                letterSpacing: '-0.05em',
+                textTransform: 'uppercase',
+                color: 'var(--text-primary)',
+              }}
+            >
+              Anti_GV
+            </span>
+            <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{source.label}</span>
+          </div>
         </div>
 
-        {/* Workspace state badge */}
         <StateBadge state={workspaceState || 'IDLE'} />
 
-        {/* Dev tab role */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {[
+            ['Dashboard', '/dashboard'],
+            ['Profile', '/profile'],
+            ['Settings', '/settings'],
+            ['Logout', '/logout'],
+          ].map(([label, path]) => (
+            <button
+              key={path}
+              onClick={() => onNavigate?.(path)}
+              style={{
+                border: '1px solid var(--panel-border)',
+                background: 'rgba(255,255,255,0.03)',
+                color: 'var(--text-secondary)',
+                padding: '6px 10px',
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+                cursor: 'pointer',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         {import.meta.env.DEV && (
           <div
             style={{
@@ -279,10 +319,66 @@ export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false }
           </div>
         )}
 
-        {/* Spacer */}
         <div style={{ flex: 1 }} />
 
-        {/* IDB recovery toast */}
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-end',
+            gap: 2,
+            marginRight: 4,
+            minWidth: 120,
+          }}
+        >
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)' }}>
+            {profile.name}
+          </span>
+          <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{profile.role}</span>
+        </div>
+
+        {targetMeta && (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-end',
+              minWidth: 0,
+              maxWidth: 360,
+            }}
+          >
+            <span
+              style={{
+                fontSize: 11,
+                color: activeDirty ? 'var(--accent)' : 'var(--text-primary)',
+                fontWeight: 700,
+                width: '100%',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                textAlign: 'right',
+              }}
+              title={targetMeta.title}
+            >
+              {targetMeta.title}
+            </span>
+            <span
+              style={{
+                fontSize: 10,
+                color: 'var(--text-muted)',
+                width: '100%',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                textAlign: 'right',
+              }}
+              title={targetMeta.detail}
+            >
+              {targetMeta.detail}
+            </span>
+          </div>
+        )}
+
         {showRecovered && (
           <div
             style={{
@@ -304,7 +400,6 @@ export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false }
           </div>
         )}
 
-        {/* History button */}
         <button
           id="history-btn"
           title="Workspace history (snapshots)"
@@ -324,17 +419,15 @@ export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false }
             fontSize: 12,
             fontWeight: 600,
             fontFamily: 'inherit',
-            transition: 'all 0.15s',
           }}
         >
           <History size={14} strokeWidth={2} />
           History
         </button>
 
-        {/* Save button */}
         <button
           onClick={handleSave}
-          disabled={saveStatus === 'saving'}
+          disabled={saveStatus === 'saving' || !activeFile}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -344,19 +437,12 @@ export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false }
             background: `${saveColor}11`,
             color: saveColor,
             border: `1px solid ${saveColor}33`,
-            cursor: saveStatus === 'saving' ? 'default' : 'pointer',
+            cursor: saveStatus === 'saving' || !activeFile ? 'default' : 'pointer',
             fontSize: 13,
             fontFamily: 'inherit',
             fontWeight: 600,
-            transition: 'all 0.2s',
             boxShadow: `0 4px 12px ${saveColor}11`,
-            opacity: saveStatus === 'saving' ? 0.7 : 1,
-          }}
-          onMouseEnter={(e) => {
-            if (saveStatus === 'idle') e.currentTarget.style.background = `${saveColor}22`;
-          }}
-          onMouseLeave={(e) => {
-            if (saveStatus === 'idle') e.currentTarget.style.background = `${saveColor}11`;
+            opacity: saveStatus === 'saving' || !activeFile ? 0.7 : 1,
           }}
         >
           <SaveIcon
@@ -364,11 +450,10 @@ export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false }
             strokeWidth={2}
             style={saveStatus === 'saving' ? { animation: 'topbarSpin 1s linear infinite' } : {}}
           />
-          {saveLabel}
+          {activeFile ? saveLabel : 'No File'}
         </button>
       </div>
 
-      {/* History Drawer */}
       {showHistory && (
         <Suspense fallback={null}>
           <HistoryDrawer onClose={() => setShowHistory(false)} />

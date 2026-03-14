@@ -26,7 +26,7 @@ export async function syncRealDiskToMemfs(opts = {}) {
       }
     }
 
-    const res = await fetch(`${API_URL}/api/fs/list?path=.&recursive=1`);
+    const res = await fetch(`${API_URL}/api/fs/list?path=.&recursive=true`);
     if (!res.ok) throw new Error('Failed to fetch fs list');
 
     const data = await res.json();
@@ -42,7 +42,7 @@ export async function syncRealDiskToMemfs(opts = {}) {
 
     // 2. Hydrate from flat list
     for (const item of data.items) {
-      if (item.isDirectory) {
+      if (item.type === 'dir' || item.isDirectory) {
         memfs.mkdir(item.path, { recursive: true }, 'SYNC');
       } else {
         // We write "stubs" for files — we don't fetch their content yet.

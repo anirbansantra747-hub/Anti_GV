@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file contextSnapshotAPI.js
  * @description Token-budget-aware context snapshot API for the AI Agent module.
