@@ -87,7 +87,7 @@ export const exists = async (targetPath) => {
 };
 
 /**
- * Lists directory contents (non-recursive by default for standard fs:list)
+ * Lists directory contents
  */
 export const listDir = async (targetPath, opts = {}) => {
   const safePath = resolveSafePath(targetPath);
@@ -99,7 +99,7 @@ export const listDir = async (targetPath, opts = {}) => {
       name: dirent.name,
       type: dirent.isDirectory() ? 'dir' : 'file',
       isDirectory: dirent.isDirectory(),
-      path: path.relative(workspaceRoot, path.join(safePath, dirent.name)).replace(/\\/g, '/'),
+      path: path.relative(getWorkspaceRoot(), path.join(safePath, dirent.name)).replace(/\\/g, '/'),
     }));
   }
 
@@ -107,8 +107,10 @@ export const listDir = async (targetPath, opts = {}) => {
   async function walk(dir) {
     const entries = await fs.readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
+      if (['node_modules', '.git', '.turbo', 'dist', '.cache'].includes(entry.name)) continue;
+      
       const full = path.join(dir, entry.name);
-      const rel = path.relative(workspaceRoot, full).replace(/\\/g, '/');
+      const rel = path.relative(getWorkspaceRoot(), full).replace(/\\/g, '/');
       const isDirectory = entry.isDirectory();
       items.push({
         name: entry.name,

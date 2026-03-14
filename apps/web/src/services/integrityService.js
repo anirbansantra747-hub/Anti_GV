@@ -12,6 +12,7 @@
  * unreadable files, not a version string mismatch.
  */
 
+/* eslint-disable no-unused-vars */
 import { memfs } from './memfsService.js';
 import { snapshotStore } from './snapshotService.js';
 import { bus, Events } from './eventBus.js';

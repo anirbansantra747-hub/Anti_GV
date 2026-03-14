@@ -75,7 +75,7 @@ class FileSystemAPI {
     if (!opts.silent) {
       // Phase 5.1: recompute Merkle rootTreeHash after each write (O(depth))
       try {
-        const newHash = await snapshotStore.computeDirHash(memfs.workspace.root);
+        const newHash = await snapshotStore.computeTreeHash(memfs.workspace.root);
         memfs.workspace.version = newHash;
         const fileCount = memfs.readdir('/', { recursive: true }).length;
         recordSnapshot(newHash, fileCount, opts.label || `Wrote ${path.split('/').pop()}`);

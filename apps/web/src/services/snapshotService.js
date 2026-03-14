@@ -43,6 +43,7 @@ class SnapshotService {
       }
     }
 
+
     return this.computeDirHash(node);
   }
 

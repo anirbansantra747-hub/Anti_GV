@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { io } from 'socket.io-client';
-import { contextService } from '../services/contextService.js'; // Teammate's context gatherer
+import { contextService } from '../services/contextService.js';
+
+import { workspaceAccessService } from '../services/workspaceAccessService.js';
 import { bus, Events } from '../services/eventBus.js';
 import { useEditorStore } from './editorStore.js';
 
@@ -27,10 +29,12 @@ export const useAgentStore = create((set, get) => {
   return {
     socket: null,
     isConnected: false,
-    messages: [], // { id, role, content, type: 'text' | 'plan' | 'code' | 'error', data?: any }
+    messages: [],
     isThinking: false,
     thinkingMessage: '',
     currentPlan: null,
+    activeTransactionId: null,
+    activeTransactionFiles: [],
     chats: [],
     activeChatId: null,
     isChatLoading: false,
@@ -59,8 +63,16 @@ export const useAgentStore = create((set, get) => {
                 .pop()
             : null;
           set({ workspaceRootName: rootName });
-          useEditorStore.getState().closeAllTabs();
+
           const { syncRealDiskToMemfs } = await import('../services/initSyncService.js');
+          const { useEditorStore } = await import('./editorStore.js');
+
+          workspaceAccessService.clear({
+            mode: 'backend',
+            label: payload.newRoot,
+            description: 'Saving through the backend workspace root.',
+          });
+          useEditorStore.getState().closeAllTabs();
           await syncRealDiskToMemfs({ preferIDB: false, reset: true });
           if (socket && newRoot) {
             socket.emit('terminal:input', { input: `cd "${newRoot}"\r` });
@@ -94,21 +106,21 @@ export const useAgentStore = create((set, get) => {
         const state = get();
         let currentTxId = state.activeTransactionId;
 
-        // 1. Begin a transaction if we don't have one open
         if (!currentTxId) {
-          // Try to import diffService dynamically or safely
           try {
             const { diffService } = await import('../services/diffService.js');
             currentTxId = diffService.beginTransaction();
             set({ activeTransactionId: currentTxId });
-          } catch (e) {
-            console.error('DiffService not ready yet', e);
+          } catch (error) {
+            console.error('DiffService not ready yet', error);
           }
         }
 
         try {
-          // 2. Parse the edits
           const parsedChunk = JSON.parse(payload.chunk);
+          const rawPath = payload.file || 'unknown.js';
+          const absolutePath = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
+
           if (parsedChunk && parsedChunk.edits && currentTxId) {
             const { diffService } = await import('../services/diffService.js');
 
@@ -128,7 +140,6 @@ export const useAgentStore = create((set, get) => {
             } catch {
               // ignore existence checks
             }
-
             const patch = {
               path: absolutePath,
               operations: parsedChunk.edits.map((edit) => ({
@@ -138,27 +149,31 @@ export const useAgentStore = create((set, get) => {
               })),
             };
 
-            // Apply patch to shadow tree
             await diffService.applyPatch(currentTxId, patch, 'AI_AGENT');
           }
 
-          set((state) => ({
+          set((nextState) => ({
+            activeTransactionFiles: nextState.activeTransactionFiles.includes(absolutePath)
+              ? nextState.activeTransactionFiles
+              : [...nextState.activeTransactionFiles, absolutePath],
             messages: [
-              ...state.messages,
+              ...nextState.messages,
               {
                 id: Date.now(),
                 role: 'assistant',
                 type: 'code',
-                content: `Staged edits for ${payload.file || 'file'} in Shadow Tree (TX: ${currentTxId ? currentTxId.substring(0, 6) : 'none'})`,
+                content: `Staged edits for ${absolutePath} in review transaction ${
+                  currentTxId ? currentTxId.substring(0, 6) : 'none'
+                }.`,
                 criticFeedback: payload.criticFeedback,
               },
             ],
           }));
         } catch (err) {
           console.error('[AgentStore] Failed to apply edit to Shadow Tree:', err);
-          set((state) => ({
+          set((nextState) => ({
             messages: [
-              ...state.messages,
+              ...nextState.messages,
               {
                 id: Date.now(),
                 role: 'assistant',
@@ -215,7 +230,6 @@ export const useAgentStore = create((set, get) => {
             };
           }
 
-          // Fallback if no messageId was provided but there's a final message
           return {
             isThinking: false,
             thinkingMessage: '',
@@ -275,7 +289,7 @@ export const useAgentStore = create((set, get) => {
         const data = await res.json();
         const chats = data.chats || [];
         const nextActive = get().activeChatId || chats[0]?.chatId || null;
-        set((state) => ({
+        set(() => ({
           chats,
           activeChatId: nextActive,
           isChatLoading: false,
@@ -330,7 +344,6 @@ export const useAgentStore = create((set, get) => {
     sendPrompt: async (prompt) => {
       if (!prompt.trim() || !socket) return;
 
-      // Add user message to UI
       set((state) => ({
         messages: [
           ...state.messages,
@@ -425,6 +438,7 @@ export const useAgentStore = create((set, get) => {
 
     finalizeDiff: async ({ acceptedPaths = [], rejectedPaths = [] } = {}) => {
       const txId = get().activeTransactionId;
+      const socketRef = get().socket;
       if (!txId) return;
 
       try {
@@ -450,16 +464,14 @@ export const useAgentStore = create((set, get) => {
         await diffService.commit(txId);
         bus.emit(Events.AI_APPROVE_DIFF);
 
-        // Persist accepted files to disk
-        const activeSocket = get().socket;
-        if (activeSocket) {
-          for (const p of accepted) {
-            const content = await fileSystemAPI.readFile(p);
-            await new Promise((resolve) => {
-              activeSocket.emit('fs:write', { path: normalizePath(p), content }, () => resolve());
-            });
-          }
-          activeSocket.emit('agent:commit', { files: accepted });
+        for (const p of accepted) {
+          const content = await fileSystemAPI.readFile(p);
+          await workspaceAccessService.saveFile(p, content, socketRef);
+          useEditorStore.getState().clearDirty(p);
+        }
+
+        if (socketRef) {
+          socketRef.emit('agent:commit', { files: accepted });
         }
 
         if (accepted[0]) {
@@ -468,13 +480,16 @@ export const useAgentStore = create((set, get) => {
 
         set((state) => ({
           activeTransactionId: null,
+          activeTransactionFiles: [],
           messages: [
             ...state.messages,
             {
               id: Date.now(),
               role: 'assistant',
               type: 'text',
-              content: 'Code changes applied and saved to disk.',
+              content: `Applied and saved ${accepted.length} AI change${
+                accepted.length === 1 ? '' : 's'
+              }.`,
             },
           ],
         }));
@@ -512,13 +527,14 @@ export const useAgentStore = create((set, get) => {
         bus.emit(Events.AI_REJECT_DIFF);
         set((state) => ({
           activeTransactionId: null,
+          activeTransactionFiles: [],
           messages: [
             ...state.messages,
             {
               id: Date.now(),
               role: 'assistant',
               type: 'text',
-              content: '❌ Code changes discarded. Transaction rolled back.',
+              content: 'Discarded the staged AI edits.',
             },
           ],
         }));
