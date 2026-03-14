@@ -10,7 +10,6 @@ import { useAgentStore } from '../../stores/agentStore';
 import { useEditorStore } from '../../stores/editorStore.js';
 import { useWorkspaceAccessStore } from '../../stores/workspaceAccessStore.js';
 import { diffService } from '../../services/diffService.js';
-import { useEditorStore } from '../../stores/editorStore.js';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -716,7 +715,6 @@ export default function AIPanel() {
           </button>
         </form>
       </div>
-
     </div>
   );
 }
