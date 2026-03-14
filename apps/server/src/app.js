@@ -15,13 +15,17 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: process.env.CLIENT_URL || '*',
     methods: ['GET', 'POST'],
   },
 });
 
 // Middleware
-app.use(cors());
+app.use(
+  cors({
+    origin: process.env.CLIENT_URL || '*',
+  })
+);
 app.use(express.json());
 
 // Health check
@@ -33,10 +37,12 @@ app.get('/health', (_req, res) => {
 import ragRoutes from './routes/rag.js';
 import fsRoutes from './routes/fs.js';
 import workspaceRoutes from './routes/workspace.js';
+import chatRoutes from './routes/chats.js';
 
 app.use('/api/rag', ragRoutes);
 app.use('/api/fs', fsRoutes);
 app.use('/api/workspace', workspaceRoutes);
+app.use('/api/chats', chatRoutes);
 
 // Socket.io
 io.on('connection', (socket) => {

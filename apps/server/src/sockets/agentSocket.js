@@ -1,4 +1,9 @@
 import { runAgentPipeline } from '../services/agent/index.js';
+import { getWorkspaceState, setWorkspaceState } from '../services/fs/workspaceState.js';
+import { ensureChat, addMessage, getChat } from '../services/db/chatService.js';
+import { runVerification } from '../services/verification/verificationRunner.js';
+import { ensureWorkspaceForCurrentRoot } from '../services/db/workspaceService.js';
+import { startBackgroundIndex } from '../services/rag/backgroundIndexer.js';
 
 /**
  * Per-socket approval gate.
@@ -13,7 +18,7 @@ export const setupAgentSocket = (io, socket) => {
    * Listen for user prompts coming from the AIPanel
    */
   socket.on('agent:prompt', async (payload) => {
-    const { prompt, context } = payload;
+    const { prompt, context, chatId: incomingChatId } = payload;
 
     console.log(`[socket] agent:prompt received from ${socket.id}`);
 
@@ -22,15 +27,40 @@ export const setupAgentSocket = (io, socket) => {
       return;
     }
 
+    let { workspaceId } = getWorkspaceState();
+    if (!workspaceId) {
+      const ws = await ensureWorkspaceForCurrentRoot();
+      if (ws?._id) {
+        workspaceId = ws._id.toString();
+        setWorkspaceState({ workspaceId, rootPath: ws.rootPath });
+      }
+    }
+    if (workspaceId) {
+      startBackgroundIndex(workspaceId, { onProgress: (msg) => console.log(msg) });
+    }
+    const chat = workspaceId ? await ensureChat(workspaceId, incomingChatId) : null;
+    const chatId = chat?.chatId;
+
+    if (workspaceId && chatId) {
+      await addMessage(workspaceId, chatId, 'user', prompt);
+      socket.emit('agent:chat', { chatId });
+    }
+
+    const chatState = workspaceId && chatId ? await getChat(workspaceId, chatId) : null;
+
     // Call the main orchestrator timeline, passing the approval gate
     await runAgentPipeline({
       prompt,
       frontendContext: context || {},
       serverContext: {
         terminalOutput: null,
+        summary: chatState?.summary || '',
+        chatMessages: chatState?.messages || [],
       },
       socket,
       waitForApproval: () => waitForApproval(socket),
+      chatId,
+      workspaceId,
     });
   });
 
@@ -72,6 +102,13 @@ export const setupAgentSocket = (io, socket) => {
       pending.resolve({ approved: false });
       pendingApprovals.delete(socket.id);
     }
+  });
+
+  socket.on('agent:commit', async (payload) => {
+    const { workspaceId } = getWorkspaceState();
+    const changedFiles = payload?.files || [];
+    if (!workspaceId || changedFiles.length === 0) return;
+    await runVerification({ workspaceId, socket, changedFiles });
   });
 
   /**

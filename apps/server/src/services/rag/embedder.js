@@ -1,53 +1,44 @@
 /**
  * @file embedder.js
- * @description Embedding service using Pinecone's inference API.
+ * @description Local embedding client (HTTP).
  *
- * Takes text chunks and converts them into vector embeddings.
- * Batches requests for throughput (max 96 chunks per batch).
+ * Uses a local embedding service (Python) to generate vector embeddings.
  */
 
-import dotenv from 'dotenv';
-dotenv.config();
-
-const PINECONE_API_KEY = process.env.PINECONE_API_KEY;
-const EMBEDDING_MODEL = 'llama-text-embed-v2';
-const BATCH_SIZE = 96;
-const PINECONE_INFERENCE_URL = 'https://api.pinecone.io/embed';
+const EMBEDDING_URL = process.env.EMBEDDING_URL || 'http://localhost:8001/embed';
+const EMBEDDING_INFO_URL = process.env.EMBEDDING_INFO_URL || 'http://localhost:8001/info';
+const DEFAULT_DIM = Number(process.env.EMBEDDING_DIM) || 384; // all-MiniLM-L6-v2
+const BATCH_SIZE = Number(process.env.EMBEDDING_BATCH_SIZE) || 8;
+const MAX_CHARS = Number(process.env.EMBEDDING_MAX_CHARS) || 8000;
+const HEALTH_TTL_MS = 30_000;
+let lastHealthCheckAt = 0;
+let lastHealthOk = false;
+let lastHealthInfo = null;
 
 /**
- * Embed a batch of text chunks using Pinecone Inference API.
+ * Embed a batch of text chunks using the local embedding service.
  * @param {string[]} texts - Array of text strings to embed
  * @returns {Promise<number[][]>} Array of embedding vectors
  */
 async function embedBatch(texts) {
-  if (!PINECONE_API_KEY) {
-    throw new Error('PINECONE_API_KEY is not set in environment variables');
-  }
-
-  const response = await fetch(PINECONE_INFERENCE_URL, {
+  const response = await fetch(EMBEDDING_URL, {
     method: 'POST',
     headers: {
-      'Api-Key': PINECONE_API_KEY,
       'Content-Type': 'application/json',
-      'X-Pinecone-Api-Version': '2025-10',
     },
-    body: JSON.stringify({
-      model: EMBEDDING_MODEL,
-      inputs: texts.map((text) => ({ text })),
-      parameters: {
-        input_type: 'passage',
-        truncate: 'END',
-      },
-    }),
+    body: JSON.stringify({ texts }),
   });
 
   if (!response.ok) {
     const errorBody = await response.text();
-    throw new Error(`Pinecone embedding failed (${response.status}): ${errorBody}`);
+    throw new Error(`Embedding server failed (${response.status}): ${errorBody}`);
   }
 
   const data = await response.json();
-  return data.data.map((item) => item.values);
+  if (!data?.embeddings) {
+    throw new Error('Embedding server response missing embeddings');
+  }
+  return data.embeddings;
 }
 
 /**
@@ -65,9 +56,10 @@ export async function embedChunks(chunks) {
   for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
     const batch = chunks.slice(i, i + BATCH_SIZE);
     const texts = batch.map((chunk) => {
-      // Prepend metadata for better embedding quality
       const prefix = `File: ${chunk.filePath} | Type: ${chunk.chunkType} | Name: ${chunk.name}\n`;
-      return prefix + chunk.content;
+      const content = typeof chunk.content === 'string' ? chunk.content : '';
+      const trimmed = content.length > MAX_CHARS ? content.slice(0, MAX_CHARS) : content;
+      return prefix + trimmed;
     });
 
     console.log(
@@ -91,6 +83,40 @@ export async function embedChunks(chunks) {
  * Get the embedding dimension for the current model.
  */
 export function getEmbeddingDimension() {
-  // multilingual-e5-large produces 1024-dimensional vectors
-  return 1024;
+  return DEFAULT_DIM;
+}
+
+/**
+ * Optional: fetch live embedding info from the server.
+ */
+export async function getEmbeddingInfo() {
+  try {
+    const res = await fetch(EMBEDDING_INFO_URL);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Cached health check for embedding server availability.
+ * @param {{ force?: boolean }} [opts]
+ */
+export async function getEmbeddingHealth(opts = {}) {
+  const { force = false } = opts;
+  const now = Date.now();
+  if (!force && now - lastHealthCheckAt < HEALTH_TTL_MS) {
+    return { ok: lastHealthOk, info: lastHealthInfo };
+  }
+  const info = await getEmbeddingInfo();
+  lastHealthOk = !!info;
+  lastHealthInfo = info;
+  lastHealthCheckAt = now;
+  return { ok: lastHealthOk, info: lastHealthInfo };
+}
+
+export async function isEmbeddingAvailable() {
+  const health = await getEmbeddingHealth();
+  return health.ok;
 }

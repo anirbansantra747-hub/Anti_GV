@@ -147,6 +147,16 @@ class BlobStore {
     }
     return freed;
   }
+
+  /**
+   * Hard reset all blobs and reference counts.
+   */
+  reset() {
+    this.blobs.clear();
+    this._refCounts.clear();
+    this._totalBytes = 0;
+    console.log('[BlobStore] Reset.');
+  }
 }
 
 // Export a singleton instance.

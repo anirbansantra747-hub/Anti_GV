@@ -5,6 +5,7 @@ import { generateCodeEdits } from './coderAgent.js';
 import { generateResponse, streamResponse } from '../llm/llmRouter.js';
 import { handleStream } from '../llm/streamHandler.js';
 import crypto from 'crypto';
+import { addMessage } from '../db/chatService.js';
 
 /**
  * Main Agent Orchestrator Pipeline
@@ -16,6 +17,8 @@ export const runAgentPipeline = async ({
   serverContext,
   socket,
   waitForApproval,
+  chatId,
+  workspaceId,
 }) => {
   try {
     console.log(`\n[AgentPipeline] ═══════════════════════════════════════════`);
@@ -68,13 +71,17 @@ ${prompt}
       );
 
       // Stream the tokens to the frontend
-      await handleStream(stream, socket, provider, {
+      const answer = await handleStream(stream, socket, provider, {
         eventName: 'agent:message:stream',
         extraPayload: { messageId },
       });
 
       console.log(`[AgentPipeline] ASK response streamed successfully`);
       socket.emit('agent:done', { messageId, message: '' }); // Send empty message to just resolve the loading state
+
+      if (workspaceId && chatId) {
+        await addMessage(workspaceId, chatId, 'assistant', answer || '');
+      }
       return;
     }
 
@@ -97,6 +104,10 @@ ${prompt}
 
     socket.emit('agent:plan', plan);
     socket.emit('agent:step:done', { stepId: 'plan' });
+
+    if (workspaceId && chatId) {
+      await addMessage(workspaceId, chatId, 'assistant', `Plan: ${plan.summary || 'No summary'}`);
+    }
 
     // ── Phase 3.5: APPROVAL GATE ─────────────────────────────────────────
     // Pipeline PAUSES here until user clicks Approve or Reject.
@@ -127,6 +138,17 @@ ${prompt}
 
     console.log(`[AgentPipeline] P4+P5 Complete: ${edits.length} file(s) edited`);
     socket.emit('agent:step:done', { stepId: 'code-generation' });
+
+    if (workspaceId && chatId) {
+      const files = (plan.steps || []).map((s) => s.filePath).filter(Boolean);
+      const unique = Array.from(new Set(files)).slice(0, 10);
+      await addMessage(
+        workspaceId,
+        chatId,
+        'assistant',
+        `Applied edits for ${unique.length} file(s): ${unique.join(', ')}`
+      );
+    }
 
     console.log(`[AgentPipeline] ═══════════════════════════════════════════`);
     console.log(`[AgentPipeline] Pipeline complete ✅`);

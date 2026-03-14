@@ -12,10 +12,16 @@
 
 import { chunkWithAST } from './astChunker.js';
 import { chunkWithSlidingWindow, chunkJSON } from './fallbackChunker.js';
+import { chunkPython } from './pythonChunker.js';
+import { chunkJava } from './javaChunker.js';
 import path from 'path';
 
 /** File extensions we can parse with AST */
 const AST_EXTENSIONS = new Set(['.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx']);
+
+/** Python/Java extensions */
+const PY_EXTENSIONS = new Set(['.py']);
+const JAVA_EXTENSIONS = new Set(['.java']);
 
 /** File extensions handled as JSON/config */
 const CONFIG_EXTENSIONS = new Set(['.json', '.jsonc']);
@@ -109,6 +115,18 @@ export function chunkFile(source, filePath) {
     return chunkJSON(source, filePath);
   }
 
-  // 3. Fallback sliding window for everything else
+  // 3. Python
+  if (PY_EXTENSIONS.has(ext)) {
+    const pyChunks = chunkPython(source, filePath);
+    if (pyChunks && pyChunks.length > 0) return pyChunks;
+  }
+
+  // 4. Java
+  if (JAVA_EXTENSIONS.has(ext)) {
+    const javaChunks = chunkJava(source, filePath);
+    if (javaChunks && javaChunks.length > 0) return javaChunks;
+  }
+
+  // 5. Fallback sliding window for everything else
   return chunkWithSlidingWindow(source, filePath);
 }

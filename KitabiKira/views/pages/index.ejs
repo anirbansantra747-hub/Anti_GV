@@ -1,0 +1,31 @@
+<% layout("/layouts/boilerplate") %>
+<body id="body">
+  <div class="container mt-4">
+    <div class="row row-cols-sm-1 row-cols-md-2 row-cols-lg-6 g-4">
+      <% Books.forEach(book => { %>
+      <div class="col mb-4">
+        <div class="card position-relative" style="width: 100%">
+          <div class="position-relative">
+            <div class="card-overlay"></div>
+          </div>
+          <img
+            src="<%= book.photo %>"
+            class="card-img-top"
+            alt="photo"
+            style="max-height: 190px; object-fit: cover; max-width: 100%"
+          />
+          <div class="card-body">
+            <h6 class="card-title"><%= book.title %></h6>
+            <a
+              href="/view/<%= book._id %>"
+              class="btn btn-dark btn-block rounded-pill"
+            >
+              View <i class="fa-solid fa-angles-right"></i>
+            </a>
+          </div>
+        </div>
+      </div>
+      <% }) %>
+    </div>
+  </div>
+</body>

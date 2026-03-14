@@ -1,154 +1,196 @@
-/**
+﻿/**
  * @file indexer.js
- * @description Full-project indexer + incremental re-indexer.
- *
- * Workflow:
- *   1. Walk the project directory tree
- *   2. For each file: chunk → embed → upsert
- *   3. Incremental mode: compare chunk hashes → only re-embed changed chunks
- *
- * Exposed as both a programmatic API and a CLI entry point.
+ * @description Hybrid indexing utilities (inventory + on-demand embedding).
  */
 
 import fs from 'fs/promises';
 import path from 'path';
 import { chunkFile, shouldSkip } from './chunker.js';
-import { embedChunks } from './embedder.js';
+import { embedChunks, isEmbeddingAvailable } from './embedder.js';
 import * as vectorStore from './vectorStore.js';
+import { buildChunkId } from './vectorStore.js';
+import { getWorkspaceRoot, isWorkspaceExplicit } from '../fs/fileService.js';
+import { extractFileMeta } from './fileMeta.js';
+import { upsertFileIndex, deleteFileIndex } from '../db/fileIndexService.js';
+import {
+  scanWorkspaceInventory,
+  upsertInventoryForFile,
+  listFilesNeedingEmbedding,
+  markEmbedded,
+  removeInventory,
+} from '../db/fileInventoryService.js';
+import { upsertChunkMetas, deleteByFile as deleteChunkMetaByFile } from '../db/chunkMetaService.js';
+import { enforceChunkBudget } from './chunkBudget.js';
+
+const MAX_FILE_BYTES = Number(process.env.INDEXER_MAX_FILE_BYTES) || 1_000_000;
+const MAX_CHUNKS_PER_FILE = Number(process.env.INDEXER_MAX_CHUNKS_PER_FILE) || 200;
 
 /**
- * Walk a directory tree and collect all file paths.
- * @param {string} dir - Root directory to walk
- * @returns {Promise<string[]>} Array of absolute file paths
+ * Scan workspace and store file inventory only (no embeddings).
  */
-async function walkDir(dir) {
-  const files = [];
-  const entries = await fs.readdir(dir, { withFileTypes: true });
-
-  for (const entry of entries) {
-    const fullPath = path.join(dir, entry.name);
-
-    if (entry.isDirectory()) {
-      if (shouldSkip(fullPath)) continue;
-      const nestedFiles = await walkDir(fullPath);
-      files.push(...nestedFiles);
-    } else if (entry.isFile()) {
-      if (!shouldSkip(fullPath)) {
-        files.push(fullPath);
-      }
-    }
+export async function scanInventory(projectRoot, workspaceId, options = {}) {
+  const root = projectRoot || getWorkspaceRoot();
+  if (!isWorkspaceExplicit() && !options.allowDefaultRoot) {
+    return { total: 0, skipped: true };
   }
-
-  return files;
+  return scanWorkspaceInventory(root, workspaceId);
 }
 
 /**
- * Index (or re-index) an entire project.
- * @param {string} projectRoot - Absolute path to the project root
- * @param {{ incremental?: boolean, onProgress?: (msg: string) => void }} options
- * @returns {Promise<{ totalFiles: number, totalChunks: number, newChunks: number, skippedChunks: number }>}
+ * Embed a set of files on-demand (candidate set).
+ */
+export async function ensureEmbeddingsForFiles(filePaths, options = {}) {
+  const { workspaceId = 'default', onProgress = () => {}, force = false } = options;
+  const root = options.rootPath || getWorkspaceRoot();
+  const embeddingOk = await isEmbeddingAvailable();
+  if (!embeddingOk) {
+    onProgress('[Indexer] Embedding unavailable - skipping on-demand embeddings.');
+    return;
+  }
+
+  for (const relPath of filePaths) {
+    if (!relPath) continue;
+    const normalized = relPath.startsWith('/') ? relPath : '/' + relPath;
+    await embedSingleFile(root, normalized, { workspaceId, onProgress, force });
+  }
+}
+
+/**
+ * Background indexing: embed a small batch from inventory.
+ */
+export async function backgroundIndexWorkspace(workspaceId, options = {}) {
+  const { limit = 3, onProgress = () => {} } = options;
+  const root = options.rootPath || getWorkspaceRoot();
+  const embeddingOk = await isEmbeddingAvailable();
+  if (!embeddingOk) {
+    onProgress('[Indexer] Embedding unavailable - background indexing paused.');
+    return { processed: 0 };
+  }
+  const pending = await listFilesNeedingEmbedding(workspaceId, limit);
+  for (const inv of pending) {
+    await embedSingleFile(root, inv.filePath, { workspaceId, onProgress, force: true });
+  }
+  return { processed: pending.length };
+}
+
+/**
+ * Manual full reindex: scan inventory and embed all files gradually.
  */
 export async function indexProject(projectRoot, options = {}) {
-  const { incremental = true, onProgress = console.log } = options;
+  const { workspaceId = 'default', onProgress = console.log } = options;
+  const root = projectRoot || getWorkspaceRoot();
 
-  onProgress(
-    `[Indexer] Starting ${incremental ? 'incremental' : 'full'} indexing of: ${projectRoot}`
-  );
-
-  // 1. Walk directory tree
-  const allFiles = await walkDir(projectRoot);
-  onProgress(`[Indexer] Found ${allFiles.length} files`);
-
-  let totalChunks = 0;
-  let newChunks = 0;
-  let skippedChunks = 0;
-
-  // 2. Process files in batches to avoid OOM on large codebases
-  const FILE_BATCH_SIZE = 20;
-
-  for (let i = 0; i < allFiles.length; i += FILE_BATCH_SIZE) {
-    const fileBatch = allFiles.slice(i, i + FILE_BATCH_SIZE);
-    const allChunksToEmbed = [];
-
-    for (const filePath of fileBatch) {
-      try {
-        const source = await fs.readFile(filePath, 'utf-8');
-        const chunks = chunkFile(source, filePath);
-
-        if (chunks.length === 0) continue;
-        totalChunks += chunks.length;
-
-        if (incremental) {
-          // Get existing hashes from ChromaDB
-          const existingHashes = await vectorStore.getHashesForFile(filePath);
-
-          // Filter to only changed chunks
-          const changedChunks = chunks.filter((chunk) => {
-            const existingHash = existingHashes.get(chunk.name);
-            if (existingHash === chunk.hash) {
-              skippedChunks++;
-              return false; // Unchanged — skip
-            }
-            return true; // Changed or new — re-embed
-          });
-
-          if (changedChunks.length > 0) {
-            allChunksToEmbed.push(...changedChunks);
-          }
-        } else {
-          // Full re-index — delete existing and re-embed all
-          await vectorStore.deleteByFile(filePath);
-          allChunksToEmbed.push(...chunks);
-        }
-      } catch (err) {
-        // Skip files that can't be read (binary, permissions, etc.)
-        if (err.code !== 'ERR_INVALID_STATE') {
-          onProgress(`[Indexer] Skipping ${filePath}: ${err.message}`);
-        }
-      }
-    }
-
-    // 3. Embed and upsert the batch
-    if (allChunksToEmbed.length > 0) {
-      onProgress(
-        `[Indexer] Embedding ${allChunksToEmbed.length} chunks (files ${i + 1}–${Math.min(i + FILE_BATCH_SIZE, allFiles.length)})`
-      );
-
-      const embedded = await embedChunks(allChunksToEmbed);
-      await vectorStore.upsert(embedded);
-      newChunks += embedded.length;
-    }
+  if (!isWorkspaceExplicit() && !options.allowDefaultRoot) {
+    onProgress('[Indexer] Workspace not explicitly selected. Skipping index.');
+    return { totalFiles: 0, totalChunks: 0, newChunks: 0, skippedChunks: 0 };
   }
 
-  const totalStored = await vectorStore.getCount();
-  onProgress(
-    `[Indexer] Done! Files: ${allFiles.length}, Total chunks: ${totalChunks}, New/updated: ${newChunks}, Skipped: ${skippedChunks}, Stored in DB: ${totalStored}`
-  );
+  const inventory = await scanWorkspaceInventory(root, workspaceId);
+  onProgress(`[Indexer] Inventory updated: ${inventory.total} files`);
 
-  return { totalFiles: allFiles.length, totalChunks, newChunks, skippedChunks };
+  let processed = 0;
+  let guard = 0;
+  while (guard < 10000) {
+    const batch = await listFilesNeedingEmbedding(workspaceId, 5);
+    if (batch.length === 0) break;
+    for (const inv of batch) {
+      await embedSingleFile(root, inv.filePath, { workspaceId, onProgress, force: true });
+      processed++;
+    }
+    guard++;
+  }
+
+  return { totalFiles: inventory.total, totalChunks: 0, newChunks: processed, skippedChunks: 0 };
 }
 
 /**
- * Re-index a single file (used when file watcher detects a change).
- * @param {string} filePath - Absolute path to the changed file
+ * Re-index a single file on write.
  */
-export async function reindexFile(filePath, onProgress = console.log) {
+export async function reindexFile(absPath, onProgress = console.log, workspaceId = 'default') {
+  const root = getWorkspaceRoot();
+  const relPath = '/' + path.relative(root, absPath).replace(/\\/g, '/');
+  await embedSingleFile(root, relPath, { workspaceId, onProgress, force: true });
+}
+
+/**
+ * Remove all indexed data for a file (used on delete/rename).
+ */
+export async function removeFileIndex(filePath, workspaceId = 'default') {
   try {
-    const source = await fs.readFile(filePath, 'utf-8');
-    const chunks = chunkFile(source, filePath);
-
-    if (chunks.length === 0) {
-      await vectorStore.deleteByFile(filePath);
-      onProgress(`[Indexer] File deleted/empty, removed chunks: ${filePath}`);
-      return;
-    }
-
-    // Delete old chunks and re-embed
-    await vectorStore.deleteByFile(filePath);
-    const embedded = await embedChunks(chunks);
-    await vectorStore.upsert(embedded);
-    onProgress(`[Indexer] Re-indexed ${filePath}: ${embedded.length} chunks`);
-  } catch (err) {
-    onProgress(`[Indexer] Failed to re-index ${filePath}: ${err.message}`);
+    const root = getWorkspaceRoot();
+    const relPath = '/' + path.relative(root, filePath).replace(/\\/g, '/');
+    await vectorStore.deleteByFile(relPath, workspaceId);
+    await deleteChunkMetaByFile(workspaceId, relPath);
+    await deleteFileIndex(workspaceId, relPath);
+    await removeInventory(workspaceId, relPath);
+  } catch {
+    // best effort
   }
+}
+
+async function embedSingleFile(root, relPath, options) {
+  const { workspaceId, onProgress, force } = options;
+  const embeddingOk = await isEmbeddingAvailable();
+  if (!embeddingOk) {
+    onProgress(`[Indexer] Embedding unavailable - skip ${relPath}`);
+    return;
+  }
+  const absPath = path.resolve(root, relPath.replace(/^\/+/, ''));
+
+  if (shouldSkip(relPath)) return;
+
+  const stat = await fs.stat(absPath);
+  if (stat.size > MAX_FILE_BYTES) {
+    onProgress(`[Indexer] Skip large file: ${relPath} (${stat.size} bytes)`);
+    return;
+  }
+
+  const inventory = await upsertInventoryForFile(workspaceId, root, absPath);
+  if (!inventory || inventory.skip) return;
+
+  if (!force && inventory.lastEmbeddedHash && inventory.lastEmbeddedHash === inventory.hash) {
+    return;
+  }
+
+  let source = await fs.readFile(absPath, 'utf-8');
+  let chunks = chunkFile(source, relPath).map((c) => ({ ...c, workspaceId }));
+  if (chunks.length > MAX_CHUNKS_PER_FILE) {
+    chunks = chunks.slice(0, MAX_CHUNKS_PER_FILE);
+  }
+
+  const meta = extractFileMeta(source, relPath);
+  if (meta.language) {
+    await upsertFileIndex(workspaceId, relPath, meta);
+  }
+
+  if (chunks.length === 0) {
+    await vectorStore.deleteByFile(relPath, workspaceId);
+    await deleteChunkMetaByFile(workspaceId, relPath);
+    await deleteFileIndex(workspaceId, relPath);
+    await markEmbedded(workspaceId, relPath, inventory.hash);
+    return;
+  }
+
+  // Replace old chunks
+  await vectorStore.deleteByFile(relPath, workspaceId);
+  await deleteChunkMetaByFile(workspaceId, relPath);
+
+  const embedded = await embedChunks(chunks);
+  await vectorStore.upsert(embedded);
+
+  const metas = embedded.map((c) => ({
+    chunkId: buildChunkId(c),
+    filePath: c.filePath,
+    chunkType: c.chunkType,
+    name: c.name,
+    hash: c.hash,
+    size: (c.content || '').length,
+  }));
+  await upsertChunkMetas(workspaceId, metas);
+
+  await markEmbedded(workspaceId, relPath, inventory.hash);
+  await enforceChunkBudget(workspaceId);
+
+  source = null;
+  chunks = null;
 }

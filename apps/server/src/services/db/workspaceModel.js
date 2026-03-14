@@ -76,7 +76,7 @@ const WorkspaceSchema = new mongoose.Schema(
     /** Language / framework tag, e.g. "node", "python", "java" */
     language: {
       type: String,
-      default: '',
+      default: undefined,
       trim: true,
     },
     /** Whether this workspace is pinned / starred */
