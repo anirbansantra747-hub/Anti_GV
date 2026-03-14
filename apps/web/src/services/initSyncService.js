@@ -14,13 +14,13 @@ export async function syncRealDiskToMemfs() {
   try {
     const isHydrated = await loadFromIDB();
     if (isHydrated) {
-      const rootHash = await snapshotStore.computeDirHash(memfs.workspace.root);
+      const rootHash = await snapshotStore.computeTreeHash(memfs.workspace.root);
       memfs.workspace.version = rootHash;
       console.log(`[InitSync] Hydrated memfs from IDB. Root hash = ${rootHash.slice(0, 8)}`);
       return true;
     }
 
-    const res = await fetch(`${API_URL}/api/fs/list?path=.`);
+    const res = await fetch(`${API_URL}/api/fs/list?path=.&recursive=true`);
     if (!res.ok) throw new Error('Failed to fetch fs list');
 
     const data = await res.json();
@@ -36,7 +36,7 @@ export async function syncRealDiskToMemfs() {
 
     // 2. Hydrate from flat list
     for (const item of data.items) {
-      if (item.isDirectory) {
+      if (item.type === 'dir' || item.isDirectory) {
         memfs.mkdir(item.path, { recursive: true }, 'SYNC');
       } else {
         // We write "stubs" for files — we don't fetch their content yet.
@@ -60,7 +60,7 @@ export async function syncRealDiskToMemfs() {
     }
 
     // 3. Compute final initial hash so IntegrityService doesn't crash us
-    const rootHash = await snapshotStore.computeDirHash(memfs.workspace.root);
+    const rootHash = await snapshotStore.computeTreeHash(memfs.workspace.root);
     memfs.workspace.version = rootHash;
 
     console.log(`[InitSync] Hydrated memfs from real disk. Root hash = ${rootHash.slice(0, 8)}`);

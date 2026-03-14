@@ -243,7 +243,7 @@ class DiffService {
     memfs.workspace.root = tx.shadowRoot;
 
     // Compute and update the new root hash (version)
-    const newVersion = await snapshotStore.computeDirHash(tx.shadowRoot);
+    const newVersion = await snapshotStore.computeTreeHash(tx.shadowRoot);
     memfs.workspace.version = newVersion;
     memfs.workspace.state = 'IDLE';
     memfs.workspace.locked = false;

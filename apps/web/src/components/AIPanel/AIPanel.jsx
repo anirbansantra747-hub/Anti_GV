@@ -1,14 +1,105 @@
 /* eslint-disable no-unused-vars */
 /**
  * @file AIPanel.jsx
- * @description Sleek, modern AI chat interface with glassmorphism chat bubbles.
+ * @description AI panel with clearer review state and save-target context.
  */
 
 import React, { useEffect, useState, useRef } from 'react';
 import { Send, Cpu, Check, X, Orbit, Eye } from 'lucide-react';
 import { useAgentStore } from '../../stores/agentStore';
+import { useEditorStore } from '../../stores/editorStore.js';
+import { useWorkspaceAccessStore } from '../../stores/workspaceAccessStore.js';
 import { DiffViewer } from '../Editor/DiffViewer';
 import { diffService } from '../../services/diffService.js';
+
+function Bubble({ msg }) {
+  const isUser = msg.role === 'user';
+  const isError = msg.type === 'error';
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: isUser ? 'flex-end' : 'flex-start',
+      }}
+    >
+      <div
+        style={{
+          background: isUser ? 'var(--accent)' : 'color-mix(in srgb, var(--panel-bg) 72%, black)',
+          color: isUser ? '#041014' : isError ? '#fecaca' : 'var(--text-primary)',
+          padding: '12px 14px',
+          maxWidth: '92%',
+          wordBreak: 'break-word',
+          fontSize: 13,
+          lineHeight: 1.6,
+          border: isError
+            ? '1px solid rgba(248,113,113,0.35)'
+            : isUser
+              ? '1px solid var(--accent-dim)'
+              : '1px solid var(--panel-border)',
+          boxShadow: isUser ? '4px 4px 0px rgba(0,0,0,0.9)' : 'none',
+        }}
+      >
+        {msg.type === 'plan' ? (
+          <div>
+            <strong style={{ fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+              Plan
+            </strong>
+            <p style={{ margin: '8px 0' }}>{msg.data.summary}</p>
+            <ul style={{ paddingLeft: 18, margin: 0, color: 'var(--text-secondary)' }}>
+              {msg.data.steps.map((step) => (
+                <li key={step.stepId}>{step.action}</li>
+              ))}
+            </ul>
+          </div>
+        ) : msg.type === 'code' ? (
+          <div>
+            <div
+              style={{
+                fontFamily: '"JetBrains Mono", monospace',
+                fontSize: 12.5,
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              {msg.content}
+            </div>
+            {msg.criticFeedback && (
+              <div
+                style={{
+                  marginTop: 10,
+                  paddingTop: 10,
+                  borderTop: '1px dashed var(--panel-border)',
+                  fontSize: 11,
+                  color: msg.criticFeedback.includes('Approved') ? '#86efac' : '#fcd34d',
+                }}
+              >
+                {msg.criticFeedback}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div style={{ position: 'relative' }}>
+            <span style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</span>
+            {msg.isStreaming && (
+              <span
+                style={{
+                  display: 'inline-block',
+                  width: 8,
+                  height: 14,
+                  background: '#cbd5e1',
+                  marginLeft: 4,
+                  verticalAlign: 'middle',
+                  animation: 'blink 1s step-end infinite',
+                }}
+              />
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function AIPanel() {
   const {
@@ -20,9 +111,12 @@ export default function AIPanel() {
     thinkingMessage,
     sendPrompt,
     activeTransactionId,
+    activeTransactionFiles,
     approveTransaction,
     rejectTransaction,
   } = useAgentStore();
+  const activeFile = useEditorStore((s) => s.activeFile);
+  const source = useWorkspaceAccessStore((s) => s.source);
 
   const [inputMsg, setInputMsg] = useState('');
   const [showDiff, setShowDiff] = useState(false);
@@ -39,10 +133,9 @@ export default function AIPanel() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (inputMsg.trim() && !isThinking) {
-      sendPrompt(inputMsg);
-      setInputMsg('');
-    }
+    if (!inputMsg.trim() || isThinking) return;
+    sendPrompt(inputMsg);
+    setInputMsg('');
   };
 
   return (
@@ -51,37 +144,48 @@ export default function AIPanel() {
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
-        background: 'transparent',
+        background:
+          'linear-gradient(180deg, color-mix(in srgb, var(--panel-bg) 90%, #0b1220) 0%, #090d14 100%)',
       }}
     >
-      {/* Header */}
+      <style>{`
+        @keyframes blink { 50% { opacity: 0; } }
+        @keyframes panelSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      `}</style>
+
       <div
-        className="glass-header"
         style={{
-          padding: '14px 20px',
+          padding: '14px 18px 12px',
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'center',
-          background: 'var(--panel-bg)',
+          alignItems: 'flex-start',
           borderBottom: '1px solid var(--panel-border)',
+          background: 'rgba(8,12,18,0.9)',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Cpu size={18} color="var(--accent)" strokeWidth={2} />
-          <h2
-            style={{
-              fontSize: 14,
-              fontWeight: 700,
-              margin: 0,
-              color: 'var(--text-primary)',
-              letterSpacing: '0.05em',
-              textTransform: 'uppercase',
-            }}
-          >
-            AI Agent
-          </h2>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Cpu size={18} color="var(--accent)" strokeWidth={2} />
+            <h2
+              style={{
+                fontSize: 14,
+                fontWeight: 700,
+                margin: 0,
+                color: 'var(--text-primary)',
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+              }}
+            >
+              AI Agent
+            </h2>
+          </div>
+          <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+            {activeFile ? `Focused on ${activeFile}` : 'No active file selected'}
+          </span>
+          <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{source.description}</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingTop: 4 }}>
           <div
             style={{
               width: 8,
@@ -97,170 +201,67 @@ export default function AIPanel() {
         </div>
       </div>
 
-      {/* Messages Area */}
+      <div
+        style={{
+          padding: '12px 18px',
+          borderBottom: '1px solid rgba(148,163,184,0.12)',
+          background: 'rgba(7,10,16,0.72)',
+          display: 'grid',
+          gap: 4,
+        }}
+      >
+        <span style={{ fontSize: 10, letterSpacing: '0.08em', color: 'var(--text-muted)' }}>
+          SAVE TARGET
+        </span>
+        <span style={{ fontSize: 12, color: 'var(--text-primary)' }}>{source.label}</span>
+      </div>
+
       <div
         style={{
           flex: 1,
           overflowY: 'auto',
-          padding: '20px',
+          padding: '18px',
           display: 'flex',
           flexDirection: 'column',
-          gap: '20px',
+          gap: 18,
         }}
       >
         {messages.length === 0 && (
           <div
-            className="animate-in"
             style={{
               margin: 'auto',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
+              display: 'grid',
               gap: 12,
-              opacity: 0.6,
+              padding: '24px',
+              border: '1px solid rgba(148,163,184,0.18)',
+              background: 'rgba(15,23,42,0.65)',
             }}
           >
             <div
               style={{
-                width: 48,
-                height: 48,
-                borderRadius: 16,
-                background: 'var(--panel-border)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                width: 44,
+                height: 44,
+                display: 'grid',
+                placeItems: 'center',
+                background: 'rgba(34,211,238,0.12)',
+                color: 'var(--accent)',
               }}
             >
-              <Orbit size={24} color="var(--accent)" />
+              <Orbit size={22} />
             </div>
-            <p
-              style={{
-                color: 'var(--text-secondary)',
-                fontSize: 13,
-                margin: 0,
-                textAlign: 'center',
-                maxWidth: 220,
-                lineHeight: 1.5,
-              }}
-            >
-              Hello! I'm Anti_GV. Ask me to build something or refactor your code.
+            <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.6 }}>
+              Ask for a targeted edit, a refactor, or a patch for the active file. Review stays
+              explicit before code is applied.
             </p>
           </div>
         )}
 
         {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className="animate-in"
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start',
-            }}
-          >
-            <div
-              style={{
-                background: msg.role === 'user' ? 'var(--accent)' : 'var(--app-bg)',
-                color: msg.role === 'user' ? '#000000' : 'var(--text-primary)',
-                padding: '12px 16px',
-                borderRadius: 0,
-                maxWidth: '90%',
-                wordBreak: 'break-word',
-                fontSize: 13.5,
-                lineHeight: 1.6,
-                border:
-                  msg.role === 'user'
-                    ? '1px solid var(--accent-dim)'
-                    : '1px solid var(--panel-border)',
-                borderLeft:
-                  msg.role === 'user' ? '1px solid var(--accent-dim)' : '4px solid var(--accent)',
-                boxShadow: msg.role === 'user' ? '4px 4px 0px rgba(0,0,0,1)' : 'none',
-                ...(msg.type === 'error' && {
-                  color: 'var(--red)',
-                  border: '1px solid var(--red)',
-                  borderLeft: '4px solid var(--red)',
-                  background: 'var(--app-bg)',
-                }),
-              }}
-            >
-              {msg.type === 'plan' ? (
-                <div>
-                  <strong
-                    style={{
-                      opacity: 0.8,
-                      fontSize: 12,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.05em',
-                    }}
-                  >
-                    Proposed Plan
-                  </strong>
-                  <p style={{ margin: '8px 0' }}>{msg.data.summary}</p>
-                  <ul style={{ paddingLeft: 20, margin: 0, color: 'var(--text-secondary)' }}>
-                    {msg.data.steps.map((s) => (
-                      <li key={s.stepId} style={{ marginBottom: 4 }}>
-                        <span style={{ color: 'var(--accent)' }}>{s.action}</span>{' '}
-                        <code
-                          style={{ background: '#00000044', padding: '2px 4px', borderRadius: 4 }}
-                        >
-                          {s.filePath}
-                        </code>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : msg.type === 'code' ? (
-                <div>
-                  <div
-                    style={{
-                      fontFamily: '"JetBrains Mono", monospace',
-                      fontSize: 12.5,
-                      whiteSpace: 'pre-wrap',
-                    }}
-                  >
-                    {msg.content}
-                  </div>
-                  {msg.criticFeedback && (
-                    <div
-                      style={{
-                        marginTop: 12,
-                        paddingTop: 12,
-                        borderTop: '1px dashed var(--panel-border)',
-                        fontSize: 11,
-                        color: msg.criticFeedback.includes('Approved') ? '#4ade80' : '#fbbf24',
-                      }}
-                    >
-                      <strong style={{ opacity: 0.7 }}>Semantic Verifier:</strong>
-                      <br />
-                      {msg.criticFeedback}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div style={{ position: 'relative' }}>
-                  <span style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</span>
-                  {msg.isStreaming && (
-                    <span
-                      style={{
-                        display: 'inline-block',
-                        width: '8px',
-                        height: '14px',
-                        background: '#cbd5e1',
-                        marginLeft: '4px',
-                        verticalAlign: 'middle',
-                        animation: 'blink 1s step-end infinite',
-                      }}
-                    />
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
+          <Bubble key={msg.id} msg={msg} />
         ))}
 
         {isThinking && (
           <div
-            className="animate-in"
             style={{
               alignSelf: 'flex-start',
               color: 'var(--text-secondary)',
@@ -268,67 +269,80 @@ export default function AIPanel() {
               display: 'flex',
               alignItems: 'center',
               gap: 8,
-              background: 'rgba(255,255,255,0.02)',
-              padding: '8px 14px',
-              borderRadius: 20,
+              background: 'rgba(255,255,255,0.03)',
+              padding: '8px 12px',
               border: '1px solid var(--panel-border)',
             }}
           >
             <Orbit
               size={14}
               color="var(--accent)"
-              style={{ animation: 'spin 2s linear infinite' }}
+              style={{ animation: 'panelSpin 2s linear infinite' }}
             />
             {thinkingMessage || 'Thinking...'}
           </div>
         )}
+
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Transaction Approval Banner */}
       {activeTransactionId && (
         <div
-          className="animate-in"
           style={{
-            margin: '0 20px',
-            padding: '12px 14px',
-            background: 'rgba(59,130,246,0.1)',
-            border: '1px solid rgba(59,130,246,0.3)',
-            borderRadius: 8,
-            display: 'flex',
-            flexDirection: 'column',
+            margin: '0 18px 16px',
+            padding: '14px',
+            background: 'rgba(59,130,246,0.12)',
+            border: '1px solid rgba(96,165,250,0.28)',
+            display: 'grid',
             gap: 10,
           }}
         >
-          <span style={{ fontSize: 12, color: '#93c5fd' }}>
-            <strong style={{ color: '#bfdbfe' }}>Pending Edits</strong> (Ref:{' '}
-            {activeTransactionId.substring(0, 6)})
-          </span>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ display: 'grid', gap: 4 }}>
+              <span style={{ fontSize: 11, letterSpacing: '0.08em', color: '#bfdbfe' }}>
+                PENDING REVIEW
+              </span>
+              <span style={{ fontSize: 12, color: '#dbeafe' }}>
+                Ref {activeTransactionId.substring(0, 6)} with {activeTransactionFiles.length} file
+                {activeTransactionFiles.length === 1 ? '' : 's'}
+              </span>
+            </div>
             <button
               onClick={() => setShowDiff(true)}
               style={{
-                flex: 1,
-                display: 'flex',
+                display: 'inline-flex',
                 alignItems: 'center',
-                justifyContent: 'center',
                 gap: 6,
-                background: '#3b82f6',
-                color: '#fff',
-                border: 'none',
-                padding: '8px',
-                borderRadius: 6,
+                border: '1px solid rgba(147,197,253,0.35)',
+                background: 'rgba(15,23,42,0.38)',
+                color: '#dbeafe',
+                padding: '8px 12px',
                 cursor: 'pointer',
-                fontSize: 12,
-                fontWeight: 600,
-                boxShadow: '0 4px 12px rgba(59,130,246,0.3)',
-                transition: 'background 0.2s',
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = '#2563eb')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = '#3b82f6')}
             >
-              <Eye size={14} strokeWidth={3} /> Review Code
+              <Eye size={14} strokeWidth={2.5} />
+              Review diff
             </button>
+          </div>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {activeTransactionFiles.map((file) => (
+              <span
+                key={file}
+                style={{
+                  fontSize: 11,
+                  padding: '4px 8px',
+                  color: '#dbeafe',
+                  background: 'rgba(15,23,42,0.48)',
+                  border: '1px solid rgba(147,197,253,0.18)',
+                }}
+              >
+                {file}
+              </span>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', gap: 8 }}>
             <button
               onClick={approveTransaction}
               style={{
@@ -338,19 +352,16 @@ export default function AIPanel() {
                 justifyContent: 'center',
                 gap: 6,
                 background: '#10b981',
-                color: '#fff',
+                color: '#041014',
                 border: 'none',
-                padding: '8px',
-                borderRadius: 6,
+                padding: '9px 12px',
                 cursor: 'pointer',
                 fontSize: 12,
-                fontWeight: 600,
-                transition: 'background 0.2s',
+                fontWeight: 700,
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = '#059669')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = '#10b981')}
             >
-              <Check size={14} strokeWidth={3} /> Quick Accept
+              <Check size={14} strokeWidth={3} />
+              Apply and save
             </button>
             <button
               onClick={rejectTransaction}
@@ -360,32 +371,27 @@ export default function AIPanel() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: 6,
-                background: 'rgba(255,255,255,0.05)',
-                color: '#cbd5e1',
+                background: 'transparent',
+                color: '#e2e8f0',
                 border: '1px solid var(--panel-border)',
-                padding: '8px',
-                borderRadius: 6,
+                padding: '9px 12px',
                 cursor: 'pointer',
                 fontSize: 12,
-                fontWeight: 500,
-                transition: 'background 0.2s',
+                fontWeight: 600,
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.1)')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
             >
-              <X size={14} strokeWidth={2} /> Discard
+              <X size={14} strokeWidth={2} />
+              Discard
             </button>
           </div>
         </div>
       )}
 
-      {/* Input Area */}
       <div
         style={{
-          padding: '16px 20px',
+          padding: '14px 18px 18px',
           borderTop: '1px solid var(--panel-border)',
-          borderBottom: 'none',
-          background: 'var(--panel-bg)',
+          background: 'rgba(7,10,16,0.92)',
         }}
       >
         <form
@@ -393,17 +399,9 @@ export default function AIPanel() {
           style={{
             display: 'flex',
             gap: 10,
-            background: 'var(--app-bg)',
+            background: 'rgba(15,23,42,0.9)',
             border: '1px solid var(--panel-border)',
-            borderRadius: 0,
-            padding: '8px 8px 8px 16px',
-            transition: 'border-color 0s, box-shadow 0s',
-          }}
-          onFocus={(e) => {
-            e.currentTarget.style.borderColor = 'var(--accent)';
-          }}
-          onBlur={(e) => {
-            e.currentTarget.style.borderColor = 'var(--panel-border)';
+            padding: '8px 8px 8px 14px',
           }}
         >
           <input
@@ -411,13 +409,12 @@ export default function AIPanel() {
             value={inputMsg}
             onChange={(e) => setInputMsg(e.target.value)}
             disabled={isThinking || !isConnected}
-            placeholder={isConnected ? 'Message Anti_GV...' : 'Connecting...'}
+            placeholder={isConnected ? 'Ask for a precise edit...' : 'Connecting...'}
             style={{
               flex: 1,
               background: 'transparent',
               border: 'none',
               color: 'var(--text-primary)',
-              padding: '0 8px',
               outline: 'none',
               fontSize: 14,
             }}
@@ -431,32 +428,25 @@ export default function AIPanel() {
                   ? 'var(--panel-border)'
                   : 'var(--accent)',
               color:
-                isThinking || !inputMsg.trim() || !isConnected ? 'var(--text-muted)' : '#000000',
+                isThinking || !inputMsg.trim() || !isConnected ? 'var(--text-muted)' : '#041014',
               border: 'none',
-              borderRadius: 0,
-              width: 36,
-              height: 36,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              width: 38,
+              height: 38,
+              display: 'grid',
+              placeItems: 'center',
               cursor: isThinking || !inputMsg.trim() || !isConnected ? 'not-allowed' : 'pointer',
-              transition: 'background 0.1s',
             }}
           >
-            <Send size={16} strokeWidth={3} style={{ transform: 'translateX(1px)' }} />
+            <Send size={16} strokeWidth={3} />
           </button>
         </form>
       </div>
 
-      {/* Diff Viewer portal */}
       {showDiff && activeTransactionId && (
         <DiffViewer
           txId={activeTransactionId}
           patchedPaths={diffService.getTransaction(activeTransactionId)?.patchedPaths || []}
-          onClose={() => {
-            setShowDiff(false);
-            useAgentStore.setState({ activeTransactionId: null });
-          }}
+          onClose={() => setShowDiff(false)}
         />
       )}
     </div>

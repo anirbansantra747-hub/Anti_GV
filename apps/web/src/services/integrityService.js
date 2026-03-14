@@ -89,16 +89,7 @@ class IntegrityService {
    * @returns {Promise<string>}
    */
   async _computeRootHash(node) {
-    if (node.type === 'file') return node.hash;
-
-    // Compute each child's hash (bottom-up)
-    for (const [, child] of node.children) {
-      if (child.type === 'dir') {
-        child.hash = await this._computeRootHash(child);
-      }
-    }
-
-    return snapshotStore.computeDirHash(node);
+    return snapshotStore.computeTreeHash(node);
   }
 }
 

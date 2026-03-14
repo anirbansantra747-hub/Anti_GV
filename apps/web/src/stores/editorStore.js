@@ -65,6 +65,11 @@ export const useEditorStore = create(
         });
       },
 
+      /** Reset the editor when the workspace root changes. */
+      closeAllTabs() {
+        set({ activeFile: null, openTabs: [], dirtyFiles: new Set() });
+      },
+
       /** Mark a file as dirty (unsaved local changes). */
       markDirty(path) {
         set((state) => {

@@ -8,10 +8,11 @@ import Terminal from './components/Terminal/TerminalPane';
 import Topbar from './components/Topbar/Topbar';
 import StatusBar from './components/StatusBar/StatusBar';
 import QuickOpen from './components/QuickOpen/QuickOpen';
+import SiteShell from './components/Shell/SiteShell.jsx';
+import ToastViewport from './components/Toast/ToastViewport.jsx';
 import { handleDrop } from './services/localFileService.js';
-import { useEditorStore } from './stores/editorStore.js';
+import { useSettingsStore } from './stores/settingsStore.js';
 
-// ── Defaults stored in localStorage ──────────────────────────────────────────
 const SIDEBAR_DEFAULT = 240;
 const AIPANEL_DEFAULT = 380;
 const TERMINAL_DEFAULT = 220;
@@ -19,6 +20,7 @@ const TERMINAL_DEFAULT = 220;
 function clamp(v, min, max) {
   return Math.min(max, Math.max(min, v));
 }
+
 function readLS(key, fallback) {
   try {
     const v = Number(localStorage.getItem(key));
@@ -28,8 +30,13 @@ function readLS(key, fallback) {
   }
 }
 
-// ── Resize handle ─────────────────────────────────────────────────────────────
-function ResizeHandle({ direction = 'horizontal', onResize, className }) {
+function getRouteFromHash() {
+  if (typeof window === 'undefined') return '/';
+  const raw = window.location.hash.replace(/^#/, '') || '/';
+  return raw.startsWith('/') ? raw : `/${raw}`;
+}
+
+function ResizeHandle({ direction = 'horizontal', onResize }) {
   const isH = direction === 'horizontal';
   const handleRef = useRef(null);
 
@@ -43,11 +50,13 @@ function ResizeHandle({ direction = 'horizontal', onResize, className }) {
         const delta = (isH ? mv.clientX : mv.clientY) - startPos;
         onResize(delta, isH ? mv.clientX : mv.clientY);
       };
+
       const up = () => {
         document.body.classList.remove('resizing-h', 'resizing-v');
         window.removeEventListener('mousemove', move);
         window.removeEventListener('mouseup', up);
       };
+
       window.addEventListener('mousemove', move);
       window.addEventListener('mouseup', up);
     },
@@ -58,6 +67,7 @@ function ResizeHandle({ direction = 'horizontal', onResize, className }) {
     <div
       ref={handleRef}
       onMouseDown={onMouseDown}
+      className="resize-handle"
       style={{
         flexShrink: 0,
         width: isH ? 'var(--resize-handle-w)' : '100%',
@@ -68,14 +78,11 @@ function ResizeHandle({ direction = 'horizontal', onResize, className }) {
         zIndex: 10,
         position: 'relative',
       }}
-      className="resize-handle"
       onMouseEnter={(e) => {
         e.currentTarget.style.background = 'var(--resize-handle-hover)';
-        if (isH) e.currentTarget.style.boxShadow = '0 0 8px var(--accent-glow)';
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.background = 'var(--resize-handle-color)';
-        if (isH) e.currentTarget.style.boxShadow = 'none';
       }}
     >
       <div
@@ -93,39 +100,38 @@ function ResizeHandle({ direction = 'horizontal', onResize, className }) {
   );
 }
 
-// ── Main App ─────────────────────────────────────────────────────────────────
 export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
-  // Panel sizes (persisted to localStorage)
+  const [route, setRoute] = useState(getRouteFromHash);
   const [sidebarW, setSidebarW] = useState(() => {
     const stored = readLS('sidebar-w', SIDEBAR_DEFAULT);
-    return stored < 160 ? SIDEBAR_DEFAULT : stored; // Fix: prevent near-zero stored values
+    return stored < 160 ? SIDEBAR_DEFAULT : stored;
   });
   const [aiPanelW, setAiPanelW] = useState(() => {
     const stored = readLS('aipanel-w', AIPANEL_DEFAULT);
     return stored < 200 ? AIPANEL_DEFAULT : stored;
   });
   const [terminalH, setTerminalH] = useState(TERMINAL_DEFAULT);
-  const [terminalOpen, setTerminalOpen] = useState(true);
+  const showTerminalByDefault = useSettingsStore((s) => s.showTerminalByDefault);
+  const reducedMotion = useSettingsStore((s) => s.reducedMotion);
+  const compactDensity = useSettingsStore((s) => s.compactDensity);
+  const [terminalOpen, setTerminalOpen] = useState(showTerminalByDefault);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [cursorPos, setCursorPos] = useState(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [fullDragOver, setFullDragOver] = useState(false);
 
-  // Resize origins
   const sidebarStartW = useRef(sidebarW);
   const aiPanelStartW = useRef(aiPanelW);
   const termStartH = useRef(terminalH);
-
-  // StatusBar state
-  const [cursorPos, setCursorPos] = useState(null);
-  const [isConnected, setIsConnected] = useState(false);
-
-  // QuickOpen overlay
-  const [quickOpen, setQuickOpen] = useState(false);
-
-  // Full-app drag-over
-  const [fullDragOver, setFullDragOver] = useState(false);
   const dragCounterRef = useRef(0);
 
-  // ── Resize handlers ─────────────────────────────────────────────────────────
-  const onSidebarResize = useCallback((delta, absX) => {
+  const navigate = useCallback((nextRoute) => {
+    const normalized = nextRoute.startsWith('/') ? nextRoute : `/${nextRoute}`;
+    window.location.hash = normalized;
+  }, []);
+
+  const onSidebarResize = useCallback((delta) => {
     const newW = clamp(
       sidebarStartW.current + delta,
       parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sidebar-min-w')) ||
@@ -137,7 +143,7 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
     localStorage.setItem('sidebar-w', newW);
   }, []);
 
-  const onAiPanelResize = useCallback((delta, absX) => {
+  const onAiPanelResize = useCallback((delta) => {
     const newW = clamp(
       aiPanelStartW.current - delta,
       parseInt(getComputedStyle(document.documentElement).getPropertyValue('--aipanel-min-w')) ||
@@ -149,26 +155,14 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
     localStorage.setItem('aipanel-w', newW);
   }, []);
 
-  const onTerminalResize = useCallback((delta, absY) => {
+  const onTerminalResize = useCallback((delta) => {
     const newH = clamp(termStartH.current - delta, 80, 500);
     setTerminalH(newH);
   }, []);
 
-  // Save resize start on mousedown by listening to ResizeHandle's mousedown
-  const handleSidebarResizeStart = () => {
-    sidebarStartW.current = sidebarW;
-  };
-  const handleAiPanelResizeStart = () => {
-    aiPanelStartW.current = aiPanelW;
-  };
-  const handleTerminalResizeStart = () => {
-    termStartH.current = terminalH;
-  };
-
-  // ── Keyboard shortcut: Ctrl+P → QuickOpen ──────────────────────────────────
   useEffect(() => {
     const handler = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'p' && route === '/ide') {
         e.preventDefault();
         setQuickOpen((v) => !v);
       }
@@ -176,14 +170,29 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
+  }, [route]);
+
+  useEffect(() => {
+    const handleHashChange = () => setRoute(getRouteFromHash());
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  // ── Full-app drag-and-drop ──────────────────────────────────────────────────
+  useEffect(() => {
+    setTerminalOpen(showTerminalByDefault);
+  }, [showTerminalByDefault]);
+
+  useEffect(() => {
+    document.documentElement.dataset.motion = reducedMotion ? 'reduced' : 'full';
+    document.documentElement.dataset.density = compactDensity ? 'compact' : 'default';
+  }, [compactDensity, reducedMotion]);
+
   const onAppDragEnter = (e) => {
     if (!e.dataTransfer.types.includes('Files')) return;
     dragCounterRef.current++;
     setFullDragOver(true);
   };
+
   const onAppDragLeave = () => {
     dragCounterRef.current--;
     if (dragCounterRef.current <= 0) {
@@ -191,7 +200,9 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
       setFullDragOver(false);
     }
   };
+
   const onAppDragOver = (e) => e.preventDefault();
+
   const onAppDrop = async (e) => {
     e.preventDefault();
     dragCounterRef.current = 0;
@@ -203,8 +214,18 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
     }
   };
 
+  if (route !== '/ide') {
+    return (
+      <div style={{ height: '100vh', width: '100vw', overflow: 'hidden' }}>
+        <SiteShell route={route} navigate={navigate} />
+        <ToastViewport />
+      </div>
+    );
+  }
+
   return (
     <div
+      className="ide-shell"
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -221,51 +242,17 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
       onDragOver={onAppDragOver}
       onDrop={onAppDrop}
     >
-      {/* ── Full-app drop overlay ──────────────────────────────────────────── */}
       {fullDragOver && (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            zIndex: 2000,
-            background: 'rgba(34,211,238,0.06)',
-            border: '2px dashed var(--accent)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            backdropFilter: 'blur(2px)',
-            pointerEvents: 'none',
-            animation: 'fadeIn 0.15s ease',
-          }}
-        >
-          <div
-            style={{
-              background: 'var(--panel-bg)',
-              border: '1px solid var(--accent)',
-              borderRadius: 0,
-              padding: '24px 40px',
-              color: 'var(--accent)',
-              fontSize: 14,
-              fontWeight: 700,
-              letterSpacing: '0.05em',
-              textTransform: 'uppercase',
-              boxShadow: '8px 8px 0px rgba(0,0,0,1)' /* Hard brutalist shadow */,
-            }}
-          >
-            📂 Drop files to open
-          </div>
+        <div className="ide-drop-overlay">
+          <div className="ide-drop-box">Drop files to open</div>
         </div>
       )}
 
-      {/* ── QuickOpen overlay (Ctrl+P) ─────────────────────────────────────── */}
       {quickOpen && <QuickOpen onClose={() => setQuickOpen(false)} />}
 
-      {/* ── Topbar ────────────────────────────────────────────────────────── */}
-      <Topbar tabRole={tabRole} recoveredFromIDB={recoveredFromIDB} />
+      <Topbar tabRole={tabRole} recoveredFromIDB={recoveredFromIDB} onNavigate={navigate} />
 
-      {/* ── Main 3-column body ────────────────────────────────────────────── */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
-        {/* Activity Bar (Far Left) */}
         <div
           style={{
             width: 48,
@@ -273,8 +260,8 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            background: '#0d1117',
-            borderRight: '1px solid #131d2e',
+            background: 'var(--rail-bg)',
+            borderRight: '1px solid var(--panel-border)',
             paddingTop: 10,
             flexShrink: 0,
             zIndex: 10,
@@ -283,31 +270,10 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
           <button
             title="Explorer"
             onClick={() => setSidebarOpen((v) => !v)}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: sidebarOpen ? 'var(--text-primary)' : 'var(--text-muted)',
-              cursor: 'pointer',
-              padding: '12px 0',
-              width: '100%',
-              display: 'flex',
-              justifyContent: 'center',
-              position: 'relative',
-              transition: 'color 0.2s',
-            }}
+            className="activity-button"
+            style={{ color: sidebarOpen ? 'var(--text-primary)' : 'var(--text-muted)' }}
           >
-            {sidebarOpen && (
-              <div
-                style={{
-                  position: 'absolute',
-                  left: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: 3,
-                  background: 'var(--accent)',
-                }}
-              />
-            )}
+            {sidebarOpen ? <div className="activity-indicator" /> : null}
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="22"
@@ -319,13 +285,12 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
               strokeLinecap="round"
               strokeLinejoin="round"
             >
-              <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
-              <polyline points="14 2 14 8 20 8"></polyline>
+              <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+              <polyline points="14 2 14 8 20 8" />
             </svg>
           </button>
         </div>
 
-        {/* Left: File Tree */}
         {sidebarOpen && (
           <div
             style={{
@@ -341,14 +306,12 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
           </div>
         )}
 
-        {/* Resize: sidebar ↔ editor */}
         {sidebarOpen && (
-          <div onMouseDown={handleSidebarResizeStart}>
+          <div onMouseDown={() => (sidebarStartW.current = sidebarW)}>
             <ResizeHandle direction="horizontal" onResize={onSidebarResize} />
           </div>
         )}
 
-        {/* Center: Editor + Terminal */}
         <div
           style={{
             flex: 1,
@@ -359,7 +322,6 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
           }}
         >
           <TabBar />
-
           <div
             style={{
               flex: 1,
@@ -367,19 +329,18 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
               minHeight: 0,
               display: 'flex',
               flexDirection: 'column',
+              background: 'rgba(10, 14, 18, 0.86)',
             }}
           >
             <MonacoEditor onCursorPositionChange={setCursorPos} />
           </div>
 
-          {/* Vertical resize handle for terminal */}
           {terminalOpen && (
-            <div onMouseDown={handleTerminalResizeStart}>
+            <div onMouseDown={() => (termStartH.current = terminalH)}>
               <ResizeHandle direction="vertical" onResize={onTerminalResize} />
             </div>
           )}
 
-          {/* Terminal */}
           {terminalOpen && (
             <div
               style={{
@@ -395,64 +356,25 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
             </div>
           )}
 
-          {/* Terminal toggle strip */}
-          <div
-            style={{
-              height: 24,
-              display: 'flex',
-              alignItems: 'center',
-              paddingLeft: 10,
-              gap: 8,
-              background: 'var(--panel-bg)',
-              borderTop: '1px solid var(--panel-border)',
-              flexShrink: 0,
-            }}
-          >
-            <button
-              onClick={() => setTerminalOpen((v) => !v)}
-              style={{
-                background: 'none',
-                border: '1px solid transparent',
-                color: 'var(--text-muted)',
-                fontSize: 10,
-                fontWeight: 700,
-                letterSpacing: '0.08em',
-                cursor: 'pointer',
-                padding: '4px 10px',
-                borderRadius: 0,
-                textTransform: 'uppercase',
-                transition: 'all 0.15s',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = 'var(--text-primary)';
-                e.currentTarget.style.borderColor = 'var(--panel-border)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = 'var(--text-muted)';
-                e.currentTarget.style.borderColor = 'transparent';
-              }}
-            >
-              {terminalOpen ? '⌄ Terminal' : '⌃ Terminal'}
+          <div className="terminal-strip">
+            <button onClick={() => setTerminalOpen((v) => !v)} className="terminal-toggle">
+              {terminalOpen ? 'Hide Terminal' : 'Show Terminal'}
             </button>
-            <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 4 }}>
-              Ctrl+P — Quick Open
-            </span>
+            <span>Ctrl+P for Quick Open</span>
           </div>
         </div>
 
-        {/* Resize: editor ↔ AI panel */}
-        <div onMouseDown={handleAiPanelResizeStart}>
+        <div onMouseDown={() => (aiPanelStartW.current = aiPanelW)}>
           <ResizeHandle direction="horizontal" onResize={onAiPanelResize} />
         </div>
 
-        {/* Right: AI Panel */}
         <div style={{ width: aiPanelW, minWidth: aiPanelW, overflow: 'hidden' }}>
           <AIPanel />
         </div>
       </div>
 
-      {/* ── Status Bar ────────────────────────────────────────────────────── */}
       <StatusBar tabRole={tabRole} isConnected={isConnected} cursorPos={cursorPos} />
+      <ToastViewport />
     </div>
   );
 }

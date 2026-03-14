@@ -25,6 +25,22 @@ class SnapshotService {
   }
 
   /**
+   * Recursively computes the Merkle root hash of the tree (O(depth)).
+   * Updates intermediate directory hashes.
+   * @param {import('../models/WorkspaceContracts.js').DirectoryNode} node
+   * @returns {Promise<string>}
+   */
+  async computeTreeHash(node) {
+    if (node.type === 'file') return node.hash;
+    for (const [, child] of node.children) {
+      if (child.type === 'dir') {
+        child.hash = await this.computeTreeHash(child);
+      }
+    }
+    return this.computeDirHash(node);
+  }
+
+  /**
    * @param {string} payload
    * @private
    */

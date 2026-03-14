@@ -2,17 +2,19 @@
 /**
  * @file ExplorerMenu.jsx
  * @description Three-dot dropdown menu for the Explorer panel header.
- * Provides: Open Folder, New File, New Folder, Refresh, Collapse All.
+ * Provides: Open Folder, New File, New Folder, Refresh.
  */
 import React, { useState, useRef, useEffect } from 'react';
-import { useAgentStore } from '../../stores/agentStore.js';
+import {
+  openDirectoryViaFSA,
+  openFilesViaInput,
+  supportsDirectoryPicker,
+} from '../../services/localFileService.js';
 
 export default function ExplorerMenu({ onNewFile, onNewFolder }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef(null);
-  const socket = useAgentStore((s) => s.socket);
 
-  // Close on outside click
   useEffect(() => {
     if (!open) return;
     const handler = (e) => {
@@ -23,11 +25,25 @@ export default function ExplorerMenu({ onNewFile, onNewFolder }) {
   }, [open]);
 
   const items = [
-    { label: '📂  Open Folder…', action: () => socket?.emit('fs:pick_folder') },
-    { label: '📄  New File', action: onNewFile },
-    { label: '📁  New Folder', action: onNewFolder },
+    {
+      label: 'Open Folder...',
+      action: () => {
+        if (supportsDirectoryPicker) {
+          openDirectoryViaFSA().catch((error) =>
+            console.error('[ExplorerMenu] Open folder failed:', error)
+          );
+          return;
+        }
+
+        openFilesViaInput({ directory: true }).catch((error) =>
+          console.error('[ExplorerMenu] Open folder import failed:', error)
+        );
+      },
+    },
+    { label: 'New File', action: onNewFile },
+    { label: 'New Folder', action: onNewFolder },
     { divider: true },
-    { label: '🔄  Refresh', action: () => window.location.reload() },
+    { label: 'Refresh', action: () => window.location.reload() },
   ];
 
   return (
@@ -55,7 +71,7 @@ export default function ExplorerMenu({ onNewFile, onNewFolder }) {
           e.target.style.color = '#94a3b8';
         }}
       >
-        ⋯
+        ...
       </button>
 
       {open && (

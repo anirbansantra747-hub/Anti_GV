@@ -112,7 +112,7 @@ class ConflictResolver {
 
     // Compute the new version hash and commit
     const { snapshotStore } = await import('./snapshotService.js');
-    const newVersion = await snapshotStore.computeDirHash(memfs.workspace.root);
+    const newVersion = await snapshotStore.computeTreeHash(memfs.workspace.root);
     memfs.workspace.version = newVersion;
     memfs.workspace.state = 'IDLE';
     memfs.workspace.locked = false;

@@ -15,8 +15,12 @@ import { Tree } from 'react-arborist';
 import { Search, X } from 'lucide-react';
 import { useFileSystemStore } from '../../stores/fileSystemStore.js';
 import { useEditorStore } from '../../stores/editorStore.js';
-import { useAgentStore } from '../../stores/agentStore.js';
-import { handleDrop } from '../../services/localFileService.js';
+import {
+  handleDrop,
+  openDirectoryViaFSA,
+  openFilesViaInput,
+  supportsDirectoryPicker,
+} from '../../services/localFileService.js';
 import FileNode from './FileNode.jsx';
 import FileTreeActions from './FileTreeActions.jsx';
 import ExplorerMenu from './ExplorerMenu.jsx';
@@ -39,8 +43,6 @@ export default function FileTree() {
   const [dropProgress, setDropProgress] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [inlineMode, setInlineMode] = useState(null); // 'file' | 'folder' | null
-
-  const socket = useAgentStore((s) => s.socket);
 
   const rootChildren = treeData?.[0]?.children ?? [];
   const hasFiles = rootChildren.length > 0;
@@ -261,7 +263,18 @@ export default function FileTree() {
               You have not yet opened a folder.
             </p>
             <button
-              onClick={() => socket?.emit('fs:pick_folder')}
+              onClick={() => {
+                if (supportsDirectoryPicker) {
+                  openDirectoryViaFSA().catch((error) =>
+                    console.error('[FileTree] Open folder failed:', error)
+                  );
+                  return;
+                }
+
+                openFilesViaInput({ directory: true }).catch((error) =>
+                  console.error('[FileTree] Open folder import failed:', error)
+                );
+              }}
               style={{
                 background: '#0e639c',
                 color: '#ffffff',

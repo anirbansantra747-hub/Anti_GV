@@ -12,6 +12,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { diffService } from '../../services/diffService.js';
 import { bus, Events } from '../../services/eventBus.js';
+import { useAgentStore } from '../../stores/agentStore.js';
 
 /**
  * @param {{
@@ -101,15 +102,13 @@ export function DiffViewer({ txId, patchedPaths, onClose }) {
     const rejectedPaths = patchedPaths.filter((p) => decisions[p] === 'reject');
     if (rejectedPaths.length === patchedPaths.length) {
       // All rejected — just rollback the whole transaction
-      diffService.rollback(txId);
-      bus.emit(Events.AI_REJECT_DIFF);
+      await useAgentStore.getState().rejectTransaction();
       onClose();
       return;
     }
 
     // Commit accepted diffs
-    await diffService.commit(txId);
-    bus.emit(Events.AI_APPROVE_DIFF);
+    await useAgentStore.getState().approveTransaction();
     onClose();
   }
 
@@ -195,9 +194,8 @@ export function DiffViewer({ txId, patchedPaths, onClose }) {
           )}
           <button
             style={{ ...styles.btn, ...styles.btnCancel }}
-            onClick={() => {
-              diffService.rollback(txId);
-              bus.emit(Events.AI_REJECT_DIFF);
+            onClick={async () => {
+              await useAgentStore.getState().rejectTransaction();
               onClose();
             }}
           >
