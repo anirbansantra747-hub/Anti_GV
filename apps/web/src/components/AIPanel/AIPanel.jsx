@@ -7,8 +7,10 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Send, Cpu, Check, X, Orbit, Eye } from 'lucide-react';
 import { useAgentStore } from '../../stores/agentStore';
-import { DiffViewer } from '../Editor/DiffViewer';
 import { diffService } from '../../services/diffService.js';
+import { useEditorStore } from '../../stores/editorStore.js';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 export default function AIPanel() {
   const {
@@ -22,16 +24,109 @@ export default function AIPanel() {
     activeTransactionId,
     approveTransaction,
     rejectTransaction,
+    currentPlan,
+    approvePlan,
+    rejectPlan,
+    chats,
+    activeChatId,
+    loadChats,
+    createChat,
+    switchChat,
+    isChatLoading,
   } = useAgentStore();
 
   const [inputMsg, setInputMsg] = useState('');
-  const [showDiff, setShowDiff] = useState(false);
   const messagesEndRef = useRef(null);
+  const [indexStatus, setIndexStatus] = useState({
+    chunksStored: 0,
+    workspaceId: 'default',
+    inventoryCount: 0,
+    embeddingOk: false,
+    chromaOk: false,
+    embeddingInfo: null,
+    lastUpdated: '',
+    loading: false,
+    error: '',
+  });
 
   useEffect(() => {
     connect();
     return () => disconnect();
   }, [connect, disconnect]);
+
+  useEffect(() => {
+    if (isConnected) {
+      loadChats();
+    }
+  }, [isConnected, loadChats]);
+
+  useEffect(() => {
+    let timer = null;
+    const refresh = async () => {
+      try {
+        setIndexStatus((s) => ({ ...s, loading: true, error: '' }));
+        const res = await fetch(`${API_URL}/api/rag/status`);
+        if (!res.ok) throw new Error(`Status ${res.status}`);
+        const data = await res.json();
+        setIndexStatus((s) => ({
+          ...s,
+          chunksStored: data.chunksStored || 0,
+          workspaceId: data.workspaceId || 'default',
+          inventoryCount: data.inventoryCount || 0,
+          embeddingOk: Boolean(data.embeddingOk),
+          chromaOk: Boolean(data.chromaOk),
+          embeddingInfo: data.embeddingInfo || null,
+          lastUpdated: new Date().toLocaleTimeString(),
+          loading: false,
+          error: '',
+        }));
+      } catch (err) {
+        setIndexStatus((s) => ({
+          ...s,
+          loading: false,
+          error: err.message || 'Failed to load status',
+        }));
+      }
+    };
+
+    if (isConnected) {
+      refresh();
+      timer = setInterval(refresh, 15000);
+    }
+
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [isConnected]);
+
+  const handleReindex = async () => {
+    try {
+      setIndexStatus((s) => ({ ...s, loading: true, error: '' }));
+      const res = await fetch(`${API_URL}/api/rag/index`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ incremental: true }),
+      });
+      if (!res.ok) throw new Error(`Index failed (${res.status})`);
+      const data = await res.json();
+      setIndexStatus((s) => ({
+        ...s,
+        chunksStored: data?.result?.newChunks
+          ? s.chunksStored + data.result.newChunks
+          : s.chunksStored,
+        workspaceId: data.workspaceId || s.workspaceId,
+        lastUpdated: new Date().toLocaleTimeString(),
+        loading: false,
+        error: '',
+      }));
+    } catch (err) {
+      setIndexStatus((s) => ({
+        ...s,
+        loading: false,
+        error: err.message || 'Index failed',
+      }));
+    }
+  };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -95,6 +190,114 @@ export default function AIPanel() {
             {isConnected ? 'ONLINE' : 'OFFLINE'}
           </span>
         </div>
+      </div>
+
+      {/* Chat selector */}
+      <div
+        style={{
+          padding: '10px 14px',
+          borderBottom: '1px solid var(--panel-border)',
+          background: 'rgba(0,0,0,0.2)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+        }}
+      >
+        <select
+          value={activeChatId || ''}
+          onChange={(e) => switchChat(e.target.value)}
+          disabled={isChatLoading || !isConnected}
+          style={{
+            flex: 1,
+            background: 'var(--app-bg)',
+            border: '1px solid var(--panel-border)',
+            color: 'var(--text-primary)',
+            padding: '6px 8px',
+            fontSize: 12,
+          }}
+        >
+          {chats.length === 0 && <option value="">No chats</option>}
+          {chats.map((c) => (
+            <option key={c.chatId} value={c.chatId}>
+              {c.title || 'Untitled'}
+            </option>
+          ))}
+        </select>
+        <button
+          onClick={createChat}
+          disabled={!isConnected || isChatLoading}
+          style={{
+            background: 'var(--accent)',
+            color: '#000',
+            border: 'none',
+            padding: '6px 10px',
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: '0.06em',
+            cursor: !isConnected || isChatLoading ? 'not-allowed' : 'pointer',
+          }}
+        >
+          New
+        </button>
+      </div>
+
+      {/* Index Status */}
+      <div
+        style={{
+          padding: '10px 14px',
+          borderBottom: '1px solid var(--panel-border)',
+          background: 'rgba(0,0,0,0.18)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span
+            style={{
+              fontSize: 10,
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              color: 'var(--text-muted)',
+            }}
+          >
+            Index Status
+          </span>
+          <span style={{ fontSize: 12, color: 'var(--text-primary)' }}>
+            {indexStatus.chunksStored} chunks / {indexStatus.inventoryCount} files -{' '}
+            {indexStatus.workspaceId}
+          </span>
+          <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+            Embed: {indexStatus.embeddingOk ? 'OK' : 'Down'} | Chroma:{' '}
+            {indexStatus.chromaOk ? 'OK' : 'Down'}
+          </span>
+          <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+            {indexStatus.error
+              ? `Error: ${indexStatus.error}`
+              : indexStatus.lastUpdated
+                ? `Updated ${indexStatus.lastUpdated}`
+                : 'Not loaded'}
+          </span>
+        </div>
+        <button
+          onClick={handleReindex}
+          disabled={indexStatus.loading || !isConnected}
+          style={{
+            background:
+              indexStatus.loading || !isConnected ? 'var(--panel-border)' : 'var(--accent)',
+            color: indexStatus.loading || !isConnected ? 'var(--text-muted)' : '#000',
+            border: 'none',
+            borderRadius: 0,
+            padding: '6px 10px',
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: '0.06em',
+            cursor: indexStatus.loading || !isConnected ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {indexStatus.loading ? 'Indexing...' : 'Reindex'}
+        </button>
       </div>
 
       {/* Messages Area */}
@@ -208,6 +411,70 @@ export default function AIPanel() {
                       </li>
                     ))}
                   </ul>
+
+                  {/* If this is the active pending plan, show approval buttons */}
+                  {currentPlan && currentPlan.summary === msg.data.summary && (
+                    <div
+                      style={{
+                        marginTop: 16,
+                        display: 'flex',
+                        gap: 8,
+                        background: 'rgba(0,0,0,0.1)',
+                        padding: 10,
+                        borderRadius: 8,
+                        border: '1px solid rgba(255,255,255,0.05)',
+                      }}
+                    >
+                      <button
+                        onClick={approvePlan}
+                        style={{
+                          flex: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6,
+                          background: '#10b981',
+                          color: '#fff',
+                          border: 'none',
+                          padding: '8px',
+                          borderRadius: 6,
+                          cursor: 'pointer',
+                          fontSize: 12,
+                          fontWeight: 600,
+                          transition: 'background 0.2s',
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = '#059669')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = '#10b981')}
+                      >
+                        <Check size={14} strokeWidth={3} /> Approve Plan
+                      </button>
+                      <button
+                        onClick={rejectPlan}
+                        style={{
+                          flex: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6,
+                          background: 'rgba(255,255,255,0.05)',
+                          color: '#cbd5e1',
+                          border: '1px solid var(--panel-border)',
+                          padding: '8px',
+                          borderRadius: 6,
+                          cursor: 'pointer',
+                          fontSize: 12,
+                          fontWeight: 500,
+                          transition: 'background 0.2s',
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = '#ef444455')}
+                        onMouseLeave={(e) =>
+                          (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')
+                        }
+                      >
+                        <X size={14} strokeWidth={2} /> Reject
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : msg.type === 'code' ? (
                 <div>
@@ -306,7 +573,13 @@ export default function AIPanel() {
           </span>
           <div style={{ display: 'flex', gap: 8 }}>
             <button
-              onClick={() => setShowDiff(true)}
+              onClick={() => {
+                const tx = diffService.getTransaction(activeTransactionId);
+                const first = tx?.patchedPaths?.[0];
+                if (first) {
+                  useEditorStore.getState().openFile(first);
+                }
+              }}
               style={{
                 flex: 1,
                 display: 'flex',
@@ -327,7 +600,7 @@ export default function AIPanel() {
               onMouseEnter={(e) => (e.currentTarget.style.background = '#2563eb')}
               onMouseLeave={(e) => (e.currentTarget.style.background = '#3b82f6')}
             >
-              <Eye size={14} strokeWidth={3} /> Review Code
+              <Eye size={14} strokeWidth={3} /> Review in Editor
             </button>
             <button
               onClick={approveTransaction}
@@ -447,18 +720,6 @@ export default function AIPanel() {
           </button>
         </form>
       </div>
-
-      {/* Diff Viewer portal */}
-      {showDiff && activeTransactionId && (
-        <DiffViewer
-          txId={activeTransactionId}
-          patchedPaths={diffService.getTransaction(activeTransactionId)?.patchedPaths || []}
-          onClose={() => {
-            setShowDiff(false);
-            useAgentStore.setState({ activeTransactionId: null });
-          }}
-        />
-      )}
     </div>
   );
 }

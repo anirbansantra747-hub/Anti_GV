@@ -65,7 +65,7 @@ router.post('/', async (req, res) => {
       rootPath,
       userId: userId || 'anonymous',
       description: description || '',
-      language: language || '',
+      language: language || undefined,
     });
 
     res.status(201).json({ success: true, workspace });
