@@ -17,7 +17,9 @@ class SnapshotService {
     }
 
     const childEntries = Array.from(dirNode.children.entries())
-      .map(([name, node]) => `${name}|${node.type === 'file' ? node.hash : node.hash}`)
+      .map(
+        ([name, node]) => `${name}|${node.type === 'file' ? node.hash : (node.hash ?? 'DIR|empty')}`
+      )
       .sort(); // Sort guarantees structural consistency
 
     const payload = `DIR|` + childEntries.join('|');
@@ -25,18 +27,23 @@ class SnapshotService {
   }
 
   /**
-   * Recursively computes the Merkle root hash of the tree (O(depth)).
-   * Updates intermediate directory hashes.
+   * THE canonical hash function — fully recursive Merkle tree hash.
+   * Pre-computes and caches subdirectory hashes bottom-up before hashing the root.
+   * Use this everywhere a stable, consistent hash is needed.
    * @param {import('../models/WorkspaceContracts.js').DirectoryNode} node
    * @returns {Promise<string>}
    */
   async computeTreeHash(node) {
     if (node.type === 'file') return node.hash;
+
+    // Bottom-up: hash subdirectories first, cache on the node so computeDirHash sees them
     for (const [, child] of node.children) {
       if (child.type === 'dir') {
         child.hash = await this.computeTreeHash(child);
       }
     }
+
+
     return this.computeDirHash(node);
   }
 

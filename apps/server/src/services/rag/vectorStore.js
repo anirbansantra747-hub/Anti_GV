@@ -1,193 +1,197 @@
 /**
  * @file vectorStore.js
- * @description Pinecone vector store adapter for RAG.
- *
- * Connects to the Pinecone index specified by PINECONE_API_KEY.
- * Provides upsert, query, and deleteByFile operations, ensuring compatibility
- * with the original ChromaDB interfaces used by the orchestrator.
+ * @description ChromaDB vector store adapter for RAG (local).
  */
 
-import { Pinecone } from '@pinecone-database/pinecone';
-import dotenv from 'dotenv';
-dotenv.config();
+import { ChromaClient, IncludeEnum } from 'chromadb';
 
-const INDEX_NAME = 'antigv-codebase';
+const COLLECTION_NAME = 'antigv-codebase';
 
-let pineconeClient = null;
-let pineconeIndex = null;
+let chromaClient = null;
+let chromaCollection = null;
 
-/**
- * Initialize connection to Pinecone and get the index.
- */
+function getClient() {
+  if (chromaClient) return chromaClient;
+  const rawHost = process.env.CHROMA_HOST || 'localhost';
+  const parsed = parseHost(rawHost);
+  chromaClient = new ChromaClient({
+    host: parsed.host,
+    port: parsed.port || Number(process.env.CHROMA_PORT) || 8000,
+    ssl: parsed.ssl ?? (process.env.CHROMA_SSL || '').toLowerCase() === 'true',
+  });
+  return chromaClient;
+}
+
 async function ensureCollection() {
-  if (pineconeIndex) return pineconeIndex;
+  if (chromaCollection) return chromaCollection;
 
-  const apiKey = process.env.PINECONE_API_KEY;
-  if (!apiKey) {
-    throw new Error('PINECONE_API_KEY is not set in environment variables');
-  }
-
-  pineconeClient = new Pinecone({ apiKey });
-
-  // Optional: Auto-create the index if it doesn't exist (Only works if user has available quota)
-  // For production, it's safer to just assume the index is created, or catch the error.
-  try {
-    const list = await pineconeClient.listIndexes();
-    const exists = list.indexes?.find((i) => i.name === INDEX_NAME);
-    if (!exists) {
-      console.log(`[VectorStore] Creating Pinecone index: ${INDEX_NAME}...`);
-      await pineconeClient.createIndex({
-        name: INDEX_NAME,
-        dimension: 1024, // Matching llama-text-embed-v2 out of embedder.js
-        metric: 'cosine',
-        spec: {
-          serverless: { cloud: 'aws', region: 'us-east-1' },
-        },
-      });
-      // Wait for initialization
-      await new Promise((res) => setTimeout(res, 5000));
-    }
-  } catch (err) {
-    console.warn('[VectorStore] Index configuration warning:', err.message);
-  }
-
-  pineconeIndex = pineconeClient.index(INDEX_NAME);
-  console.log(`[VectorStore] Connected to Pinecone index: ${INDEX_NAME}`);
-  return pineconeIndex;
+  const client = getClient();
+  chromaCollection = await client.getOrCreateCollection({
+    name: COLLECTION_NAME,
+    // We always provide embeddings explicitly; avoid default embedder dependency.
+    embeddingFunction: {
+      generate: async () => {
+        throw new Error('Embedding function is disabled. Provide embeddings explicitly.');
+      },
+    },
+    metadata: { 'hnsw:space': 'cosine' },
+  });
+  console.log(`[VectorStore] Connected to Chroma collection: ${COLLECTION_NAME}`);
+  return chromaCollection;
 }
 
 /**
- * Upsert an array of embedded chunks into Pinecone.
- * Pinecone expects { id, values, metadata }.
- * We store the chunk `content` directly in `metadata` (limit ~40KB per vector).
+ * Upsert an array of embedded chunks into Chroma.
+ * Stores content in documents and metadata for filtering.
  */
 export async function upsert(embeddedChunks) {
   if (embeddedChunks.length === 0) return;
+  const collection = await ensureCollection();
 
-  const index = await ensureCollection();
-
-  // Pinecone batch limit is typically ~100-250
   const BATCH = 100;
   for (let i = 0; i < embeddedChunks.length; i += BATCH) {
     const batch = embeddedChunks.slice(i, i + BATCH);
 
-    const vectors = batch.map((c) => ({
-      id: generateId(c),
-      values: c.embedding,
-      metadata: {
-        filePath: c.filePath,
-        chunkType: c.chunkType,
-        name: c.name,
-        startLine: c.startLine,
-        endLine: c.endLine,
-        hash: c.hash,
-        content: c.content, // Crucial: Store text in metadata
-      },
+    const ids = batch.map((c) => generateId(c));
+    const embeddings = batch.map((c) => c.embedding);
+    const documents = batch.map((c) => c.content);
+    const metadatas = batch.map((c) => ({
+      filePath: c.filePath,
+      chunkType: c.chunkType,
+      name: c.name,
+      startLine: c.startLine,
+      endLine: c.endLine,
+      hash: c.hash,
+      workspaceId: c.workspaceId || 'default',
     }));
 
-    await index.upsert(vectors);
+    await collection.upsert({ ids, embeddings, documents, metadatas });
 
+    const fileList = Array.from(new Set(batch.map((c) => c.filePath)));
+    const preview = fileList.slice(0, 5).join(', ');
+    const suffix = fileList.length > 5 ? `, ... (+${fileList.length - 5} more)` : '';
     console.log(
-      `[VectorStore] Upserted batch ${Math.floor(i / BATCH) + 1} (${batch.length} chunks)`
+      `[VectorStore] Upserted batch ${Math.floor(i / BATCH) + 1} (${batch.length} chunks) files: ${preview}${suffix}`
     );
   }
 }
 
 /**
  * Query the vector store for chunks relevant to a text query.
- * Expects the exact return format required by `contextAssembler.js`.
  */
 export async function query(queryEmbedding, topK = 10, whereFilter = undefined) {
-  const index = await ensureCollection();
+  const collection = await ensureCollection();
 
-  const results = await index.query({
-    vector: queryEmbedding,
-    topK: topK,
-    filter: whereFilter,
-    includeMetadata: true,
+  const results = await collection.query({
+    queryEmbeddings: [queryEmbedding],
+    nResults: topK,
+    where: whereFilter,
+    include: [IncludeEnum.metadatas, IncludeEnum.documents, IncludeEnum.distances],
   });
 
-  if (!results.matches || results.matches.length === 0) return [];
-
-  return results.matches.map((match) => ({
-    id: match.id,
-    content: match.metadata.content,
+  const rows = results.rows()[0] || [];
+  return rows.map((row) => ({
+    id: row.id,
+    content: row.document || '',
     metadata: {
-      filePath: match.metadata.filePath,
-      chunkType: match.metadata.chunkType,
-      name: match.metadata.name,
-      startLine: match.metadata.startLine,
-      endLine: match.metadata.endLine,
-      hash: match.metadata.hash,
+      filePath: row.metadata?.filePath,
+      chunkType: row.metadata?.chunkType,
+      name: row.metadata?.name,
+      startLine: row.metadata?.startLine,
+      endLine: row.metadata?.endLine,
+      hash: row.metadata?.hash,
+      workspaceId: row.metadata?.workspaceId,
     },
-    distance: 1 - (match.score || 1), // Convert cosine similarity score to roughly a 'distance' metric if needed
+    distance: row.distance ?? 0,
   }));
 }
 
 /**
- * Delete all chunks belonging to a specific file using metadata filters.
+ * Delete all chunks belonging to a specific file (and optional workspace).
  */
-export async function deleteByFile(filePath) {
-  const index = await ensureCollection();
-
-  try {
-    // Note: Pinecone Serverless supports deleteMany with a filter
-    await index.deleteMany({ filePath });
-    console.log(`[VectorStore] Deleted all chunks for: ${filePath}`);
-  } catch (err) {
-    console.warn(`[VectorStore] Delete warning for ${filePath}: ${err.message}`);
-  }
+export async function deleteByFile(filePath, workspaceId = undefined) {
+  const collection = await ensureCollection();
+  const where = buildWhere({ filePath, workspaceId });
+  await collection.delete({ where });
+  console.log(`[VectorStore] Deleted all chunks for: ${filePath}`);
 }
 
 /**
  * Get the count of all stored chunks.
  */
 export async function getCount() {
-  const index = await ensureCollection();
-  const stats = await index.describeIndexStats();
-  return stats.totalRecordCount || 0;
+  const collection = await ensureCollection();
+  return collection.count();
 }
 
 /**
  * Get all stored hashes for a given file. Used for incremental indexing.
  * @param {string} filePath
- * @returns {Promise<Map<string, string>>} Map of chunkName → hash
+ * @param {string} [workspaceId]
+ * @returns {Promise<Map<string, string>>} Map of chunkName â†’ hash
  */
-export async function getHashesForFile(filePath) {
-  const index = await ensureCollection();
+export async function getHashesForFile(filePath, workspaceId = undefined) {
+  const collection = await ensureCollection();
+  const where = buildWhere({ filePath, workspaceId });
+
+  const result = await collection.get({
+    where,
+    include: [IncludeEnum.metadatas],
+  });
+
   const hashMap = new Map();
-
-  // Pinecone doesn't have a simple 'SELECT * WHERE metadata=' like SQL.
-  // A hacky way to do this in Pinecone is to query with a dummy embedding
-  // and the filter, asking for high topK. This is an approximation.
-  try {
-    const dummyVector = new Array(1024).fill(0);
-    const results = await index.query({
-      vector: dummyVector,
-      topK: 1000,
-      filter: { filePath },
-      includeMetadata: true,
-    });
-
-    for (const match of results.matches) {
-      if (match.metadata && match.metadata.name && match.metadata.hash) {
-        hashMap.set(match.metadata.name, match.metadata.hash);
-      }
+  const metas = result?.metadatas || [];
+  for (const meta of metas) {
+    if (meta?.name && meta?.hash) {
+      hashMap.set(meta.name, meta.hash);
     }
-  } catch (err) {
-    console.warn(`[VectorStore] getHashesForFile warning: ${err.message}`);
   }
 
   return hashMap;
 }
 
-// ── Helpers ───────────────────────────────────────────────
-
 /**
  * Generate a deterministic ID for a chunk.
- * Format: filePath::chunkType::name
+ * Format: workspaceId::filePath::chunkType::name
  */
-function generateId(chunk) {
+export function buildChunkId(chunk) {
+  const workspaceId = chunk.workspaceId || 'default';
   const normalized = chunk.filePath.replace(/\\/g, '/');
-  return `${normalized}::${chunk.chunkType}::${chunk.name}`;
+  return `${workspaceId}::${normalized}::${chunk.chunkType}::${chunk.name}`;
+}
+
+function generateId(chunk) {
+  return buildChunkId(chunk);
+}
+
+export async function deleteByIds(ids) {
+  if (!ids || ids.length === 0) return;
+  const collection = await ensureCollection();
+  await collection.delete({ ids });
+  console.log(`[VectorStore] Deleted ${ids.length} chunks by id`);
+}
+
+function parseHost(value) {
+  try {
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+      const url = new URL(value);
+      return {
+        host: url.hostname,
+        port: url.port ? Number(url.port) : undefined,
+        ssl: url.protocol === 'https:',
+      };
+    }
+  } catch {
+    // ignore
+  }
+  return { host: value };
+}
+
+function buildWhere({ filePath, workspaceId }) {
+  if (filePath && workspaceId) {
+    return { $and: [{ filePath }, { workspaceId }] };
+  }
+  if (filePath) return { filePath };
+  if (workspaceId) return { workspaceId };
+  return undefined;
 }

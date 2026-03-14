@@ -3,6 +3,7 @@ import { snapshotStore } from './snapshotService.js';
 import { bus, Events } from './eventBus.js';
 import { blobStore } from './blobStore.js';
 import { loadFromIDB } from './persistenceService.js';
+import { resetWorkspace } from './workspaceReset.js';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -10,14 +11,19 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
  * Perform an HTTP sync to fetch the true real disk state before we turn on integrity checking.
  * This ensures the memory tree matches exactly what is on disk, avoiding phantom crashes.
  */
-export async function syncRealDiskToMemfs() {
+export async function syncRealDiskToMemfs(opts = {}) {
+  const { preferIDB = true, reset = true } = opts;
   try {
-    const isHydrated = await loadFromIDB();
-    if (isHydrated) {
-      const rootHash = await snapshotStore.computeTreeHash(memfs.workspace.root);
-      memfs.workspace.version = rootHash;
-      console.log(`[InitSync] Hydrated memfs from IDB. Root hash = ${rootHash.slice(0, 8)}`);
-      return true;
+    if (reset) resetWorkspace();
+
+    if (preferIDB) {
+      const isHydrated = await loadFromIDB();
+      if (isHydrated) {
+        const rootHash = await snapshotStore.computeTreeHash(memfs.workspace.root);
+        memfs.workspace.version = rootHash;
+        console.log(`[InitSync] Hydrated memfs from IDB. Root hash = ${rootHash.slice(0, 8)}`);
+        return true;
+      }
     }
 
     const res = await fetch(`${API_URL}/api/fs/list?path=.&recursive=true`);

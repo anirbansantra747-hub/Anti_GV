@@ -11,6 +11,7 @@ import { recordSnapshot } from '../components/History/HistoryDrawer.jsx';
 import { useEditorStore } from '../stores/editorStore.js';
 import { useToastStore } from '../stores/toastStore.js';
 import { workspaceAccessService } from './workspaceAccessService.js';
+import { resetWorkspace } from './workspaceReset.js';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
@@ -49,16 +50,6 @@ const BINARY_EXTS = new Set([
 function isBinaryExt(filename) {
   const ext = filename.split('.').pop()?.toLowerCase();
   return BINARY_EXTS.has(ext);
-}
-
-function resetWorkspace() {
-  memfs.workspace.root = {
-    type: 'dir',
-    id: 'root',
-    name: '/',
-    children: new Map(),
-  };
-  useEditorStore.getState().closeAllTabs();
 }
 
 function normalizeDirectoryInputPath(relativePath) {
@@ -112,6 +103,16 @@ function notifyImportResult({ label, kind = 'file', writtenPaths, failed, skippe
   }
 }
 
+// Skip noisy or reserved segments anywhere in the path
+const SKIP_SEGMENTS = new Set(['node_modules', '.git', '.turbo', 'dist', '.cache', '.DS_Store']);
+function shouldSkipPath(path) {
+  const parts = path.split('/').filter(Boolean);
+  return parts.some((p) => SKIP_SEGMENTS.has(p));
+}
+
+// ── Core writer ────────────────────────────────────────────────────────────────
+
+
 /**
  * @param {Array<{ path: string, file: File }>} entries
  * @param {(progress: { done: number, total: number, current: string }) => void} [onProgress]
@@ -124,6 +125,11 @@ export async function writeFilesToMemfs(entries, onProgress) {
   let done = 0;
 
   for (const { path, file } of entries) {
+    if (shouldSkipPath(path)) {
+      done++;
+      onProgress?.({ done, total: entries.length, current: path });
+      continue;
+    }
     if (file.size > MAX_FILE_SIZE) {
       skipped.push({
         path,
@@ -200,8 +206,8 @@ export async function openDirectoryViaFSA(onProgress) {
   if (!supportsDirectoryPicker) throw new Error('Directory Picker API not supported');
 
   const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
-  const entries = await collectDirectoryEntries(dirHandle, '/');
   resetWorkspace();
+  const entries = await collectDirectoryEntries(dirHandle, '/');
   const result = await writeFilesToMemfs(entries, onProgress);
   workspaceAccessService.linkDirectory(dirHandle, entries);
   openFirstImportedFile(result.writtenPaths);
@@ -226,6 +232,11 @@ async function collectDirectoryEntries(dirHandle, basePath) {
         handle,
       });
       continue;
+    } else if (handle.kind === 'directory') {
+      if (SKIP_SEGMENTS.has(name)) continue;
+      const subEntries = await collectDirectoryEntries(handle, fullPath);
+      entries.push(...subEntries);
+
     }
 
     if (['node_modules', '.git', '.turbo', 'dist', '.cache'].includes(name)) continue;
@@ -242,6 +253,8 @@ export function openFilesViaInput(opts = {}, onProgress) {
     input.multiple = opts.multiple !== false;
 
     if (opts.directory) {
+      // Open Folder replaces the current workspace
+      resetWorkspace();
       input.webkitdirectory = true;
       input.mozdirectory = true;
     }
@@ -342,18 +355,14 @@ export async function handleDrop(event, onProgress) {
 async function collectFSEntry(entry, basePath, out) {
   if (entry.isFile) {
     const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
-    out.push({ path: `${basePath}${entry.name}`, file });
-    return;
-  }
-
-  if (['node_modules', '.git', '.turbo', 'dist', '.cache'].includes(entry.name)) return;
-
-  const reader = entry.createReader();
-  const nextBase = `${basePath}${entry.name}/`;
-
-  while (true) {
-    const children = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
-    if (!children.length) break;
+    const fullPath = `${basePath}${entry.name}`;
+    if (!shouldSkipPath(fullPath)) {
+      out.push({ path: fullPath, file });
+    }
+  } else if (entry.isDirectory) {
+    if (SKIP_SEGMENTS.has(entry.name)) return;
+    const reader = entry.createReader();
+    const children = await new Promise((res, rej) => reader.readEntries(res, rej));
     for (const child of children) {
       await collectFSEntry(child, nextBase, out);
     }

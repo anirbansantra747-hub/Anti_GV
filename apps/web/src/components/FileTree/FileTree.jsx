@@ -10,7 +10,7 @@
  *  - File tree with react-arborist when files exist
  */
 
-import React, { useRef, useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Tree } from 'react-arborist';
 import { Search, X } from 'lucide-react';
 import { useFileSystemStore } from '../../stores/fileSystemStore.js';
@@ -38,7 +38,7 @@ function toArboristNodes(nodes, parentPath = '') {
 
 export default function FileTree() {
   const treeData = useFileSystemStore((s) => s.treeData);
-  const selectedRef = useRef(null);
+  const [selectedPath, setSelectedPath] = useState(null); // reactive so FileTreeActions re-renders
   const [isDragOver, setIsDragOver] = useState(false);
   const [dropProgress, setDropProgress] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -70,7 +70,7 @@ export default function FileTree() {
   const handleSelect = (nodes) => {
     const node = nodes?.[0];
     if (!node) return;
-    selectedRef.current = node.id;
+    setSelectedPath(node.id);
     if (node.data.type !== 'file' || node.data.binary) return;
     useEditorStore.getState().openFile(node.id);
   };
@@ -186,7 +186,7 @@ export default function FileTree() {
             )}
           </div>
 
-          <FileTreeActions selectedPath={selectedRef.current} />
+          <FileTreeActions selectedPath={selectedPath} />
         </>
       )}
 

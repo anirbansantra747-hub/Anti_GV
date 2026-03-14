@@ -3,12 +3,28 @@ import { io } from 'socket.io-client';
 import { contextService } from '../services/contextService.js';
 import { fileSystemAPI } from '../services/fileSystemAPI.js';
 import { workspaceAccessService } from '../services/workspaceAccessService.js';
+import { bus, Events } from '../services/eventBus.js';
 import { useEditorStore } from './editorStore.js';
 
 const SOCKET_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 export const useAgentStore = create((set, get) => {
   let socket = null;
+  const normalizePath = (rawPath) => {
+    let path = (rawPath || '').replace(/\\/g, '/').trim();
+    if (!path) return '/';
+    if (!path.startsWith('/')) path = '/' + path;
+    const rootName = get().workspaceRootName;
+    if (rootName) {
+      const prefix = `/${rootName}`;
+      if (path === prefix) return '/';
+      if (path.startsWith(prefix + '/')) {
+        path = path.slice(prefix.length);
+      }
+    }
+    return path;
+  };
 
   return {
     socket: null,
@@ -19,6 +35,10 @@ export const useAgentStore = create((set, get) => {
     currentPlan: null,
     activeTransactionId: null,
     activeTransactionFiles: [],
+    chats: [],
+    activeChatId: null,
+    isChatLoading: false,
+    workspaceRootName: null,
 
     connect: () => {
       if (socket) return;
@@ -35,6 +55,15 @@ export const useAgentStore = create((set, get) => {
       socket.on('fs:workspace_changed', async (payload) => {
         console.log(`[Workspace] Changed to ${payload.newRoot}`);
         try {
+          const newRoot = payload?.newRoot || '';
+          const rootName = newRoot
+            ? newRoot
+                .split(/[/\\]+/)
+                .filter(Boolean)
+                .pop()
+            : null;
+          set({ workspaceRootName: rootName });
+
           const { syncRealDiskToMemfs } = await import('../services/initSyncService.js');
           const { useEditorStore } = await import('./editorStore.js');
 
@@ -44,7 +73,11 @@ export const useAgentStore = create((set, get) => {
             description: 'Saving through the backend workspace root.',
           });
           useEditorStore.getState().closeAllTabs();
-          await syncRealDiskToMemfs();
+          await syncRealDiskToMemfs({ preferIDB: false, reset: true });
+          if (socket && newRoot) {
+            socket.emit('terminal:input', { input: `cd "${newRoot}"\r` });
+          }
+          await get().loadChats();
         } catch (err) {
           console.error('[Workspace] Failed to process workspace change:', err);
         }
@@ -91,6 +124,22 @@ export const useAgentStore = create((set, get) => {
           if (parsedChunk && parsedChunk.edits && currentTxId) {
             const { diffService } = await import('../services/diffService.js');
 
+            // Format the edits into the FilePatch shape expected by DiffService
+            const rawPath = payload.file || 'unknown.js';
+            const rawNorm = rawPath.startsWith('/') ? rawPath : '/' + rawPath;
+            let absolutePath = normalizePath(rawPath);
+            try {
+              const { fileSystemAPI } = await import('../services/fileSystemAPI.js');
+              if (
+                rawNorm !== absolutePath &&
+                fileSystemAPI.existsFile(rawNorm) &&
+                !fileSystemAPI.existsFile(absolutePath)
+              ) {
+                absolutePath = rawNorm;
+              }
+            } catch {
+              // ignore existence checks
+            }
             const patch = {
               path: absolutePath,
               operations: parsedChunk.edits.map((edit) => ({
@@ -202,6 +251,27 @@ export const useAgentStore = create((set, get) => {
           ],
         }));
       });
+
+      socket.on('agent:verify', (payload) => {
+        const prefix = payload.stream === 'stderr' ? '[verify][err] ' : '[verify] ';
+        set((state) => ({
+          messages: [
+            ...state.messages,
+            {
+              id: Date.now(),
+              role: 'assistant',
+              type: 'text',
+              content: `${prefix}${payload.text}`,
+            },
+          ],
+        }));
+      });
+
+      socket.on('agent:chat', (payload) => {
+        if (payload?.chatId) {
+          set({ activeChatId: payload.chatId });
+        }
+      });
     },
 
     disconnect: () => {
@@ -209,6 +279,65 @@ export const useAgentStore = create((set, get) => {
         socket.disconnect();
         socket = null;
         set({ socket: null, isConnected: false });
+      }
+    },
+
+    loadChats: async () => {
+      set({ isChatLoading: true });
+      try {
+        const res = await fetch(`${API_URL}/api/chats`);
+        const data = await res.json();
+        const chats = data.chats || [];
+        const nextActive = get().activeChatId || chats[0]?.chatId || null;
+        set((state) => ({
+          chats,
+          activeChatId: nextActive,
+          isChatLoading: false,
+        }));
+        if (nextActive) {
+          await get().switchChat(nextActive);
+        }
+      } catch (err) {
+        console.error('[AgentStore] Failed to load chats:', err);
+        set({ isChatLoading: false });
+      }
+    },
+
+    createChat: async () => {
+      set({ isChatLoading: true });
+      try {
+        const res = await fetch(`${API_URL}/api/chats`, { method: 'POST' });
+        const data = await res.json();
+        const chatId = data.chatId || null;
+        set({ activeChatId: chatId, messages: [], currentPlan: null, isChatLoading: false });
+        await get().loadChats();
+      } catch (err) {
+        console.error('[AgentStore] Failed to create chat:', err);
+        set({ isChatLoading: false });
+      }
+    },
+
+    switchChat: async (chatId) => {
+      if (!chatId) return;
+      set({ isChatLoading: true });
+      try {
+        const res = await fetch(`${API_URL}/api/chats/${chatId}`);
+        const data = await res.json();
+        const chat = data.chat;
+        set({
+          activeChatId: chatId,
+          messages: (chat?.messages || []).map((m) => ({
+            id: Date.now() + Math.random(),
+            role: m.role,
+            type: 'text',
+            content: m.content,
+          })),
+          currentPlan: null,
+          isChatLoading: false,
+        });
+      } catch (err) {
+        console.error('[AgentStore] Failed to switch chat:', err);
+        set({ isChatLoading: false });
       }
     },
 
@@ -225,21 +354,42 @@ export const useAgentStore = create((set, get) => {
       }));
 
       try {
+        // ── Pull real editor state from editorStore ──────────────────────
+        const { useEditorStore } = await import('./editorStore.js');
         const editorState = useEditorStore.getState();
-        const { contextString } = await contextService.buildContext({
-          activeFile: editorState.activeFile,
-          openTabs: editorState.openTabs,
+        const activeFile = editorState.activeFile;
+        const openTabs = editorState.openTabs || [];
+        const cursorPosition = editorState.cursorPosition || { line: 1, column: 1, selected: '' };
+
+        console.group('[AgentStore] sendPrompt()');
+        console.log('  prompt       :', prompt.slice(0, 80) + (prompt.length > 80 ? '…' : ''));
+        console.log('  activeFile   :', activeFile);
+        console.log('  openTabs     :', openTabs);
+        console.log('  cursorPos    :', cursorPosition);
+
+        // Build enriched context with ALL signals
+        const { contextString, includedFiles } = await contextService.buildContext({
+          activeFile,
+          openTabs,
           userPrompt: prompt,
+          cursorPosition,
         });
+
+        console.log('  includedFiles:', includedFiles);
+        console.log('  contextLen   :', contextString.length, 'chars');
+        console.groupEnd();
 
         socket.emit('agent:prompt', {
           prompt,
+          chatId: get().activeChatId,
           context: {
             contextString,
-            activeFile: editorState.activeFile,
+            activeFile,
+            openTabs,
           },
         });
       } catch (err) {
+        console.error('[AgentStore] sendPrompt failed:', err);
         set((state) => ({
           isThinking: false,
           messages: [
@@ -258,7 +408,26 @@ export const useAgentStore = create((set, get) => {
     approvePlan: () => {
       if (!socket) return;
       socket.emit('agent:approve', {});
-      set({ currentPlan: null, isThinking: true, thinkingMessage: 'Plan approved. Continuing...' });
+      set({ currentPlan: null, isThinking: true, thinkingMessage: 'Plan approved. Coding...' });
+    },
+
+    rejectPlan: () => {
+      if (!socket) return;
+      socket.emit('agent:reject', {});
+      set({ currentPlan: null, isThinking: false, thinkingMessage: '' });
+
+      // Optionally add a local message showing the user rejected it
+      set((state) => ({
+        messages: [
+          ...state.messages,
+          {
+            id: Date.now(),
+            role: 'user',
+            type: 'text',
+            content: '❌ Plan rejected.',
+          },
+        ],
+      }));
     },
 
     cancel: () => {
@@ -267,22 +436,46 @@ export const useAgentStore = create((set, get) => {
       set({ isThinking: false, currentPlan: null });
     },
 
-    approveTransaction: async () => {
+    finalizeDiff: async ({ acceptedPaths = [], rejectedPaths = [] } = {}) => {
       const txId = get().activeTransactionId;
       const socketRef = get().socket;
       if (!txId) return;
 
       try {
         const { diffService } = await import('../services/diffService.js');
-        const tx = diffService.getTransaction(txId);
-        const patchedPaths = tx?.patchedPaths ?? [];
+        const { fileSystemAPI } = await import('../services/fileSystemAPI.js');
+        const patchedPaths = diffService.getTransaction(txId)?.patchedPaths || [];
+        const accepted = acceptedPaths.length ? acceptedPaths : patchedPaths;
+        const rejected = rejectedPaths.length
+          ? rejectedPaths
+          : patchedPaths.filter((p) => !accepted.includes(p));
+
+        if (accepted.length === 0) {
+          diffService.rollback(txId);
+          bus.emit(Events.AI_REJECT_DIFF);
+          set({ activeTransactionId: null });
+          return;
+        }
+
+        if (rejected.length > 0) {
+          diffService.discardPaths(txId, rejected);
+        }
 
         await diffService.commit(txId);
+        bus.emit(Events.AI_APPROVE_DIFF);
 
-        for (const path of patchedPaths) {
-          const content = await fileSystemAPI.readFile(path);
-          await workspaceAccessService.saveFile(path, content, socketRef);
-          useEditorStore.getState().clearDirty(path);
+        for (const p of accepted) {
+          const content = await fileSystemAPI.readFile(p);
+          await workspaceAccessService.saveFile(p, content, socketRef);
+          useEditorStore.getState().clearDirty(p);
+        }
+
+        if (socketRef) {
+          socketRef.emit('agent:commit', { files: accepted });
+        }
+
+        if (accepted[0]) {
+          useEditorStore.getState().openFile(accepted[0]);
         }
 
         set((state) => ({
@@ -294,14 +487,14 @@ export const useAgentStore = create((set, get) => {
               id: Date.now(),
               role: 'assistant',
               type: 'text',
-              content: `Applied and saved ${patchedPaths.length} AI change${
-                patchedPaths.length === 1 ? '' : 's'
+              content: `Applied and saved ${accepted.length} AI change${
+                accepted.length === 1 ? '' : 's'
               }.`,
             },
           ],
         }));
       } catch (err) {
-        console.error('Failed to commit transaction:', err);
+        console.error('Failed to finalize diff:', err);
         set((state) => ({
           messages: [
             ...state.messages,
@@ -316,6 +509,14 @@ export const useAgentStore = create((set, get) => {
       }
     },
 
+    approveTransaction: async () => {
+      const txId = get().activeTransactionId;
+      if (!txId) return;
+      const { diffService } = await import('../services/diffService.js');
+      const patchedPaths = diffService.getTransaction(txId)?.patchedPaths || [];
+      await get().finalizeDiff({ acceptedPaths: patchedPaths });
+    },
+
     rejectTransaction: async () => {
       const txId = get().activeTransactionId;
       if (!txId) return;
@@ -323,6 +524,7 @@ export const useAgentStore = create((set, get) => {
       try {
         const { diffService } = await import('../services/diffService.js');
         diffService.rollback(txId);
+        bus.emit(Events.AI_REJECT_DIFF);
         set((state) => ({
           activeTransactionId: null,
           activeTransactionFiles: [],
@@ -342,3 +544,10 @@ export const useAgentStore = create((set, get) => {
     },
   };
 });
+
+// ── Expose store globally so contextService can read chat history ──────────
+// (avoids circular import: agentStore → contextService → agentStore)
+if (typeof window !== 'undefined') {
+  window.__agentStoreRef = { useAgentStore };
+  console.log('[AgentStore] ✅ window.__agentStoreRef set for contextService chat history access');
+}
