@@ -23,6 +23,7 @@ export const Events = {
   // State machine transitions (Core → UI)
   WS_STATE_CHANGED: 'ws:state:changed', // Workspace state changed (e.g. IDLE → AI_PENDING)
   FS_MUTATED: 'fs:mutated', // File system tree was mutated (triggers re-render)
+  WS_RESET: 'ws:reset', // Workspace reset (clear caches / tabs)
   CACHE_SAVED: 'cache:saved', // Tier 2 IndexedDB write succeeded
   CACHE_LOAD_SUCCESS: 'cache:load:success', // Tier 2 hydration succeeded on recovery
   CACHE_LOAD_FAIL: 'cache:load:fail', // Tier 2 hydration failed (corrupt/stale)

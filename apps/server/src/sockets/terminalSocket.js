@@ -1,5 +1,6 @@
 import os from 'os';
 import * as pty from 'node-pty';
+import { getWorkspaceRoot } from '../services/fs/fileService.js';
 
 const terminals = new Map();
 
@@ -13,7 +14,8 @@ export const setupTerminalSocket = (io, socket) => {
         name: 'xterm-color',
         cols: payload.cols || 80,
         rows: payload.rows || 24,
-        cwd: process.env.WORKSPACE_ROOT || process.cwd(),
+        cwd: getWorkspaceRoot(),
+        useConpty: (process.env.PTY_USE_CONPTY || '').toLowerCase() === 'true',
         env: process.env,
       });
 
@@ -21,6 +23,10 @@ export const setupTerminalSocket = (io, socket) => {
 
       ptyProcess.onData((data) => {
         socket.emit('terminal:output', { data });
+      });
+
+      ptyProcess.onExit(() => {
+        terminals.delete(socket.id);
       });
 
       if (callback) callback({ success: true });
@@ -51,8 +57,12 @@ export const setupTerminalSocket = (io, socket) => {
   socket.on('disconnect', () => {
     const ptyProcess = terminals.get(socket.id);
     if (ptyProcess) {
-      ptyProcess.kill();
       terminals.delete(socket.id);
+      try {
+        ptyProcess.kill();
+      } catch (err) {
+        console.warn('[TerminalSocket] PTY kill failed:', err?.message || err);
+      }
     }
   });
 };

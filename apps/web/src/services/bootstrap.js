@@ -17,7 +17,6 @@ import { integrityService } from './integrityService.js';
 import { fileWatcher } from './fileWatcher.js';
 import { bus, Events } from './eventBus.js';
 import { isFsError } from './fsErrors.js';
-import { syncRealDiskToMemfs } from './initSyncService.js';
 
 // ⚠️ CRITICAL: import as a side-effect to activate the FS_MUTATED → IDB debounced auto-save subscription.
 // Without this, files written to memfs are NEVER persisted to IndexedDB.
@@ -35,14 +34,9 @@ import './workspaceMachine.js';
 export async function bootstrap() {
   console.log('[Bootstrap] Starting V3 Workspace Runtime…');
 
-  // ── Step 1: True Hydration (Real Disk -> MemFS) ───────────────────────────
-  let recovered = false;
-  try {
-    recovered = await syncRealDiskToMemfs();
-    console.log(`[Bootstrap] Recovery: ${recovered ? '✅ Hydrated from API' : '⚠️ Fresh start'}`);
-  } catch (err) {
-    console.error('[Bootstrap] Recovery error (non-fatal):', err);
-  }
+  // ── Step 1: Start empty; user must explicitly open a folder ───────────────
+  const recovered = false;
+  console.log('[Bootstrap] Recovery: ⚠️ Fresh start (no auto-open)');
 
   // ── Step 2: Tab Sync (master/slave election via Web Locks) ───────────────
   await tabSyncService.init();

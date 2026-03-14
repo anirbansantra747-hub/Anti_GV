@@ -278,6 +278,28 @@ class DiffService {
   }
 
   /**
+   * Discard specific paths from the shadow tree by restoring them from Tier 1.
+   * @param {string} txId
+   * @param {string[]} paths
+   */
+  discardPaths(txId, paths = []) {
+    const tx = this._getOpenTx(txId);
+    for (const filePath of paths) {
+      const { newRoot, targetParent, fileName } = this._pathCopy(tx.shadowRoot, filePath);
+      tx.shadowRoot = newRoot;
+
+      const originalNode = this._getNode(memfs.workspace.root, filePath);
+      if (!originalNode) {
+        targetParent.children.delete(fileName);
+      } else {
+        targetParent.children.set(fileName, snapshotStore.cloneTree(originalNode));
+      }
+
+      tx.patchedPaths = tx.patchedPaths.filter((p) => p !== filePath);
+    }
+  }
+
+  /**
    * Get a diff-friendly representation between Tier 1 and the shadow tree for a given path.
    * Returns { original: string, proposed: string }.
    * @param {string} txId
@@ -323,6 +345,16 @@ class DiffService {
       );
     }
     return tx;
+  }
+
+  _getNode(root, filePath) {
+    const segments = filePath.split('/').filter(Boolean);
+    let node = root;
+    for (const seg of segments) {
+      node = node.children?.get(seg);
+      if (!node) return null;
+    }
+    return node;
   }
 
   /** Expose active transactions (read-only) for DiffViewer UI */

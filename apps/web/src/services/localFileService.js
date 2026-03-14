@@ -16,6 +16,7 @@ import { memfs } from './memfsService.js';
 import { snapshotStore } from './snapshotService.js';
 import { bus, Events } from './eventBus.js';
 import { recordSnapshot } from '../components/History/HistoryDrawer.jsx';
+import { resetWorkspace } from './workspaceReset.js';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB — skip files larger than this
@@ -58,6 +59,13 @@ function isBinaryExt(filename) {
   return BINARY_EXTS.has(ext);
 }
 
+// Skip noisy or reserved segments anywhere in the path
+const SKIP_SEGMENTS = new Set(['node_modules', '.git', '.turbo', 'dist', '.cache', '.DS_Store']);
+function shouldSkipPath(path) {
+  const parts = path.split('/').filter(Boolean);
+  return parts.some((p) => SKIP_SEGMENTS.has(p));
+}
+
 // ── Core writer ────────────────────────────────────────────────────────────────
 
 /**
@@ -68,6 +76,11 @@ function isBinaryExt(filename) {
 export async function writeFilesToMemfs(entries, onProgress) {
   let done = 0;
   for (const { path, file } of entries) {
+    if (shouldSkipPath(path)) {
+      done++;
+      onProgress?.({ done, total: entries.length, current: path });
+      continue;
+    }
     if (file.size > MAX_FILE_SIZE) {
       console.warn(
         `[LocalFS] Skipping large file (${(file.size / 1024 / 1024).toFixed(1)} MB): ${path}`
@@ -138,6 +151,8 @@ export async function openDirectoryViaFSA(onProgress) {
   if (!supportsDirectoryPicker) throw new Error('Directory Picker API not supported');
 
   const dirHandle = await window.showDirectoryPicker({ mode: 'read' });
+  // Open Folder replaces the current workspace
+  resetWorkspace();
   const entries = await collectDirectoryEntries(dirHandle, `/${dirHandle.name}`);
   await writeFilesToMemfs(entries, onProgress);
   return dirHandle.name;
@@ -151,7 +166,7 @@ async function collectDirectoryEntries(dirHandle, basePath) {
       entries.push({ path: fullPath, file: await handle.getFile() });
     } else if (handle.kind === 'directory') {
       // Skip noisy dirs
-      if (['node_modules', '.git', '.turbo', 'dist', '.cache'].includes(name)) continue;
+      if (SKIP_SEGMENTS.has(name)) continue;
       const sub = await collectDirectoryEntries(handle, fullPath);
       entries.push(...sub);
     }
@@ -173,6 +188,8 @@ export function openFilesViaInput(opts = {}, onProgress) {
     input.type = 'file';
     input.multiple = opts.multiple !== false;
     if (opts.directory) {
+      // Open Folder replaces the current workspace
+      resetWorkspace();
       input.webkitdirectory = true;
       input.mozdirectory = true;
     }
@@ -180,6 +197,11 @@ export function openFilesViaInput(opts = {}, onProgress) {
     input.onchange = async () => {
       const files = Array.from(input.files ?? []);
       if (!files.length) return resolve([]);
+
+      if (opts.directory) {
+        // Open Folder replaces the current workspace
+        resetWorkspace();
+      }
 
       const entries = files.map((f) => {
         // webkitRelativePath gives us "dirName/subdir/file.txt"
@@ -230,9 +252,12 @@ export async function handleDrop(event, onProgress) {
 async function collectFSEntry(entry, basePath, out) {
   if (entry.isFile) {
     const file = await new Promise((res, rej) => entry.file(res, rej));
-    out.push({ path: `${basePath}${entry.name}`, file });
+    const fullPath = `${basePath}${entry.name}`;
+    if (!shouldSkipPath(fullPath)) {
+      out.push({ path: fullPath, file });
+    }
   } else if (entry.isDirectory) {
-    if (['node_modules', '.git', '.turbo', 'dist', '.cache'].includes(entry.name)) return;
+    if (SKIP_SEGMENTS.has(entry.name)) return;
     const reader = entry.createReader();
     const children = await new Promise((res, rej) => reader.readEntries(res, rej));
     for (const child of children) {

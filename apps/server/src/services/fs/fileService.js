@@ -1,10 +1,12 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { getWorkspaceState } from './workspaceState.js';
 
-// Get the workspace root from environment, default to two levels up (Anti_GV root)
-let workspaceRoot = path.resolve(process.cwd(), process.env.WORKSPACE_ROOT || '../../');
+// Backend workspace management
+let workspaceExplicit = false;
 
-export const getWorkspaceRoot = () => workspaceRoot;
+export const getWorkspaceRoot = () => getWorkspaceState().rootPath;
+export const isWorkspaceExplicit = () => workspaceExplicit;
 
 /**
  * Changes the current backend workspace root directory dynamically.
@@ -16,8 +18,9 @@ export const changeWorkspace = async (newPath) => {
     if (!stats.isDirectory()) {
       throw new Error('Provided path is not a directory.');
     }
-    workspaceRoot = resolved;
-    return workspaceRoot;
+    // We update the centralized state now
+    workspaceExplicit = true;
+    return resolved;
   } catch (err) {
     throw new Error(`Failed to change workspace: ${err.message}`);
   }
@@ -32,15 +35,24 @@ export const changeWorkspace = async (newPath) => {
 export const resolveSafePath = (targetPath) => {
   if (!targetPath) throw new Error('Path cannot be empty');
 
-  // Resolve the full path
-  const resolvedPath = path.resolve(workspaceRoot, targetPath.replace(/^\/+/, '')); // strip leading slashes if sent as absolute-like
+  const root = getWorkspaceRoot();
+  const absoluteRoot = path.resolve(root);
 
-  // Enforce chroot jail
-  if (!resolvedPath.startsWith(workspaceRoot)) {
+  // path.resolve(root, '/foo') on Windows might jump to the drive root.
+  // We strip leading slashes to ensure it's relative to our root.
+  const cleanedTarget = targetPath.replace(/^\/+/, '');
+  const absoluteTarget = path.resolve(absoluteRoot, cleanedTarget);
+
+  // path.relative returns '' if they are the same, or the steps to get from root to target.
+  // If the relative path starts with '..' or is absolute, it tried to escape the root.
+  const relative = path.relative(absoluteRoot, absoluteTarget);
+  const isTraversal = relative.startsWith('..') || path.isAbsolute(relative);
+
+  if (isTraversal) {
     throw new Error(`Path traversal denied: ${targetPath}`);
   }
 
-  return resolvedPath;
+  return absoluteTarget;
 };
 
 /**
@@ -77,15 +89,41 @@ export const exists = async (targetPath) => {
 /**
  * Lists directory contents (non-recursive by default for standard fs:list)
  */
-export const listDir = async (targetPath) => {
+export const listDir = async (targetPath, opts = {}) => {
   const safePath = resolveSafePath(targetPath);
-  const dirents = await fs.readdir(safePath, { withFileTypes: true });
+  const recursive = Boolean(opts.recursive);
 
-  return dirents.map((dirent) => ({
-    name: dirent.name,
-    type: dirent.isDirectory() ? 'dir' : 'file',
-    path: path.relative(workspaceRoot, path.join(safePath, dirent.name)).replace(/\\/g, '/'),
-  }));
+  if (!recursive) {
+    const dirents = await fs.readdir(safePath, { withFileTypes: true });
+    return dirents.map((dirent) => ({
+      name: dirent.name,
+      type: dirent.isDirectory() ? 'dir' : 'file',
+      isDirectory: dirent.isDirectory(),
+      path: path.relative(workspaceRoot, path.join(safePath, dirent.name)).replace(/\\/g, '/'),
+    }));
+  }
+
+  const items = [];
+  async function walk(dir) {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      const rel = path.relative(workspaceRoot, full).replace(/\\/g, '/');
+      const isDirectory = entry.isDirectory();
+      items.push({
+        name: entry.name,
+        type: isDirectory ? 'dir' : 'file',
+        isDirectory,
+        path: rel,
+      });
+      if (isDirectory) {
+        await walk(full);
+      }
+    }
+  }
+
+  await walk(safePath);
+  return items;
 };
 
 /**

@@ -3,7 +3,9 @@ import { editJsonSchemaInstructions } from './schemas/editSchema.js';
 import { runCritic } from './criticAgent.js';
 import { runFixer } from './fixerAgent.js';
 
-import { readFile, exists } from '../fs/fileService.js';
+import { readFile, exists, getWorkspaceRoot } from '../fs/fileService.js';
+import path from 'path';
+import fs from 'fs/promises';
 
 const CODER_SYSTEM_PROMPT = `
 You are an expert Software Engineer Coder Agent.
@@ -44,12 +46,16 @@ export const generateCodeEdits = async (plan, fullContext, socket) => {
 
     // Module 10: Fetch exact REAL file contents from disk before coding
     let actualFileContent = 'File not found or is new.';
+    let effectiveFilePath = step.filePath;
     try {
-      if (step.filePath && (await exists(step.filePath))) {
-        actualFileContent = await readFile(step.filePath);
+      if (step.filePath) {
+        effectiveFilePath = await normalizeWorkspacePath(step.filePath);
+        if (await exists(effectiveFilePath)) {
+          actualFileContent = await readFile(effectiveFilePath);
+        }
       }
     } catch (e) {
-      console.warn(`[CoderAgent] Could not read ${step.filePath} from disk:`, e.message);
+      console.warn(`[CoderAgent] Could not read ${effectiveFilePath} from disk:`, e.message);
     }
 
     const stepPrompt = `
@@ -59,7 +65,7 @@ ${fullContext}
 ---
 CURRENT STEP TO IMPLEMENT:
 Action: ${step.action}
-File: ${step.filePath}
+File: ${effectiveFilePath}
 Description: ${step.description}
 
 EXACT CURRENT FILE CONTENT (From Disk):
@@ -109,7 +115,7 @@ Generate the JSON edit response for this step.
         const criticResult = await runCritic({
           prompt: step.task || step.description,
           fileContent: actualFileContent,
-          filePath: step.filePath,
+          filePath: effectiveFilePath,
           proposedEdits: editResult.edits || [],
         });
 
@@ -144,9 +150,9 @@ Generate the JSON edit response for this step.
           const fixedEdits = await runFixer({
             prompt: step.task || step.description,
             fileContent: actualFileContent,
-            filePath: step.filePath,
+            filePath: effectiveFilePath,
             previousEdits: editResult.edits || [],
-            errorFeedback: feedback,
+            errorFeedback: String(feedback || ''),
           });
 
           console.log(
@@ -173,7 +179,7 @@ Generate the JSON edit response for this step.
         chunk: JSON.stringify(editResult, null, 2),
         provider: 'groq',
         criticFeedback: String(feedback) || 'Approved on first pass.',
-        file: step.filePath,
+        file: effectiveFilePath,
       });
     } catch (error) {
       console.error(
@@ -190,3 +196,44 @@ Generate the JSON edit response for this step.
 
   return edits;
 };
+
+export async function normalizeWorkspacePath(filePath) {
+  if (!filePath) return '/';
+
+  // Normalize separators to forward slashes
+  let normalized = filePath.replace(/\\/g, '/').trim();
+
+  // Ensure it starts with a /
+  if (!normalized.startsWith('/')) normalized = '/' + normalized;
+
+  const workspaceRoot = getWorkspaceRoot();
+  const rootName = path.basename(workspaceRoot);
+
+  // If the path is already absolute and starts with the workspace root, make it relative
+  const absoluteRoot = path.resolve(workspaceRoot);
+  const absoluteFilePath = path.resolve(filePath);
+  if (absoluteFilePath.toLowerCase().startsWith(absoluteRoot.toLowerCase())) {
+    const relative = path.relative(absoluteRoot, absoluteFilePath);
+    console.log(`[CoderAgent] Converted absolute path to relative: "${filePath}" -> "${relative}"`);
+    return '/' + relative.replace(/\\/g, '/');
+  }
+
+  // Log for debugging (will show up in server console)
+  console.log(
+    `[CoderAgent] Normalizing: "${filePath}" | Root: "${workspaceRoot}" | rootName: "${rootName}"`
+  );
+
+  if (!rootName) return normalized;
+
+  // The LLM often prefixes the root folder name like "/Anti_GV/..." or "/KitabiKira/..."
+  // We want to strip that if it's the start of the path.
+  const rootNameLower = rootName.toLowerCase();
+  const segments = normalized.split('/').filter(Boolean);
+
+  if (segments.length > 0 && segments[0].toLowerCase() === rootNameLower) {
+    // Strip the first segment (the root name)
+    return '/' + segments.slice(1).join('/');
+  }
+
+  return normalized;
+}
