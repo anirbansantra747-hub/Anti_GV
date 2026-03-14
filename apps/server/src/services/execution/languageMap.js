@@ -18,17 +18,103 @@
  * }>}
  */
 export const EXTENSION_MAP = {
-  c: { pistonLang: 'c', display: 'C', fileTemplate: 'code.c', errorStyle: 'gcc' },
-  cpp: { pistonLang: 'c++', display: 'C++', fileTemplate: 'code.cpp', errorStyle: 'gcc' },
-  cc: { pistonLang: 'c++', display: 'C++', fileTemplate: 'code.cpp', errorStyle: 'gcc' },
-  java: { pistonLang: 'java', display: 'Java', fileTemplate: 'Main.java', errorStyle: 'javac' },
-  go: { pistonLang: 'go', display: 'Go', fileTemplate: 'main.go', errorStyle: 'go' },
-  rs: { pistonLang: 'rust', display: 'Rust', fileTemplate: 'main.rs', errorStyle: 'rust' },
-  rb: { pistonLang: 'ruby', display: 'Ruby', fileTemplate: 'code.rb', errorStyle: 'python' },
-  php: { pistonLang: 'php', display: 'PHP', fileTemplate: 'code.php', errorStyle: 'generic' },
-  cs: { pistonLang: 'mono', display: 'C#', fileTemplate: 'Program.cs', errorStyle: 'gcc' },
-  kt: { pistonLang: 'kotlin', display: 'Kotlin', fileTemplate: 'Main.kt', errorStyle: 'javac' },
-  sh: { pistonLang: 'bash', display: 'Bash', fileTemplate: 'script.sh', errorStyle: 'generic' },
+  // Web / Scripts
+  js: {
+    pistonLang: 'javascript',
+    display: 'JavaScript',
+    fileTemplate: 'code.js',
+    errorStyle: 'generic',
+    runner: 'docker',
+  },
+  ts: {
+    pistonLang: 'typescript',
+    display: 'TypeScript',
+    fileTemplate: 'code.ts',
+    errorStyle: 'generic',
+    runner: 'docker',
+  },
+  py: {
+    pistonLang: 'python',
+    display: 'Python',
+    fileTemplate: 'code.py',
+    errorStyle: 'python',
+    runner: 'docker',
+  },
+
+  // Compiled / Backend
+  c: { pistonLang: 'c', display: 'C', fileTemplate: 'code.c', errorStyle: 'gcc', runner: 'docker' },
+  cpp: {
+    pistonLang: 'c++',
+    display: 'C++',
+    fileTemplate: 'code.cpp',
+    errorStyle: 'gcc',
+    runner: 'docker',
+  },
+  cc: {
+    pistonLang: 'c++',
+    display: 'C++',
+    fileTemplate: 'code.cpp',
+    errorStyle: 'gcc',
+    runner: 'docker',
+  },
+  java: {
+    pistonLang: 'java',
+    display: 'Java',
+    fileTemplate: 'Main.java',
+    errorStyle: 'javac',
+    runner: 'docker',
+  },
+  go: {
+    pistonLang: 'go',
+    display: 'Go',
+    fileTemplate: 'main.go',
+    errorStyle: 'go',
+    runner: 'docker',
+  },
+  rs: {
+    pistonLang: 'rust',
+    display: 'Rust',
+    fileTemplate: 'main.rs',
+    errorStyle: 'rust',
+    runner: 'docker',
+  },
+  rb: {
+    pistonLang: 'ruby',
+    display: 'Ruby',
+    fileTemplate: 'code.rb',
+    errorStyle: 'python',
+    runner: 'docker',
+  },
+  php: {
+    pistonLang: 'php',
+    display: 'PHP',
+    fileTemplate: 'code.php',
+    errorStyle: 'generic',
+    runner: 'docker',
+  },
+  cs: {
+    pistonLang: 'mono',
+    display: 'C#',
+    fileTemplate: 'Program.cs',
+    errorStyle: 'gcc',
+    runner: 'docker',
+  },
+  kt: {
+    pistonLang: 'kotlin',
+    display: 'Kotlin',
+    fileTemplate: 'Main.kt',
+    errorStyle: 'javac',
+    runner: 'docker',
+  },
+  sh: {
+    pistonLang: 'bash',
+    display: 'Bash',
+    fileTemplate: 'script.sh',
+    errorStyle: 'generic',
+    runner: 'docker',
+  },
+
+  // Other (Piston fallbacks)
   pl: { pistonLang: 'perl', display: 'Perl', fileTemplate: 'code.pl', errorStyle: 'generic' },
   r: { pistonLang: 'r', display: 'R', fileTemplate: 'code.r', errorStyle: 'generic' },
   swift: {
