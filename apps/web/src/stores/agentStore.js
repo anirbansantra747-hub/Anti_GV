@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { io } from 'socket.io-client';
 import { contextService } from '../services/contextService.js';
-import { fileSystemAPI } from '../services/fileSystemAPI.js';
+
 import { workspaceAccessService } from '../services/workspaceAccessService.js';
 import { bus, Events } from '../services/eventBus.js';
 import { useEditorStore } from './editorStore.js';
@@ -289,7 +289,7 @@ export const useAgentStore = create((set, get) => {
         const data = await res.json();
         const chats = data.chats || [];
         const nextActive = get().activeChatId || chats[0]?.chatId || null;
-        set((state) => ({
+        set(() => ({
           chats,
           activeChatId: nextActive,
           isChatLoading: false,

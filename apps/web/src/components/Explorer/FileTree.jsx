@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAgentStore } from '../../stores/agentStore';
 import { useFileSystemStore } from '../../stores/fileSystemStore';

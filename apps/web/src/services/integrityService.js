@@ -12,6 +12,7 @@
  * unreadable files, not a version string mismatch.
  */
 
+/* eslint-disable no-unused-vars */
 import { memfs } from './memfsService.js';
 import { snapshotStore } from './snapshotService.js';
 import { bus, Events } from './eventBus.js';
@@ -81,7 +82,6 @@ class IntegrityService {
       this._isRunning = false;
     }
   }
-
 }
 
 export const integrityService = new IntegrityService();
