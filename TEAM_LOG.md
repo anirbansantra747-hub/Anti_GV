@@ -78,11 +78,68 @@ New entries at **top**. Format:
 
 ---
 
+### 2026-03-03 — [FS] Module 1: V3 File System Runtime — All 6 Phases
+
+**Who:** Teammate 1 (Soumadeep) | **Branch:** `feature/module-1-filesystem` ← `development`
+**What:** Full implementation of the V3 Transactional Workspace Runtime for Module 1.
+
+- **Phase 1** — Core contracts (`WorkspaceContracts.js`), `BlobStore` (SHA-256 deduplication), `MemfsService` (O(1) nested Map FS), `SnapshotService` (Merkle hashing + path-copying)
+- **Phase 2** — `EventBus` (Pub/Sub), `WorkspaceMachine` (state machine: IDLE → AI_PENDING → DIFF_REVIEW → COMMITTING), `EditorStore` (Zustand tabs/dirty), `PersistenceService` (3s debounced IDB write), `CrashRecovery` (Web Lock-gated IDB hydration)
+- **Phase 3** — `DiffService` (Shadow Trees, O(depth) path-copying, full tx lifecycle), `ContextService` (LLM prompt builder), `DiffViewer.jsx` (Monaco side-by-side diff UI with Accept/Reject)
+- **Phase 4** — `TabSyncService` (BroadcastChannel master/slave election), `RemoteSync` (differential Tier 3 blob push), `ConflictResolver` (structural tree diff + merge decisions), `LargeFile` guard (>2MB streaming SHA-256)
+- **Phase 5** — `FsErrors` (6 typed error classes with codes + remedies), `FsGuard` (authority enforcement: path safety + module permissions + state check), `IntegrityService` (60s Merkle re-computation), `SnapshotGC` (max-20 cap + orphaned blob eviction), `fsIntegration.test.js` (7 ADR end-to-end tests)
+- **Phase 6** — `FileSystemAPI` (sole public facade for all external modules), `FsSubscriptions` (event hooks), `ContextSnapshotAPI` (token-budget-aware LLM context), `ModulePermissions` (per-module registry), `FileWatcher` (hash-diffed watcher), `Bootstrap` (startup sequence wired to `main.jsx`)
+
+**Breaking?** No — all new files under `apps/web/src/`. Updated `main.jsx` to run `bootstrap()` before React mount.
+**Teammates:** No `pnpm install` needed (all packages already in `apps/web/package.json`). Other modules **must** import from `fileSystemAPI`, `fsSubscriptions`, `contextSnapshotAPI`, or `fileWatcher` — **never** directly from `memfsService` or `blobStore`.
+
+---
+
 ### 2026-03-04 — [AI] LLM Clients & Router
 
 **Who:** Anirban | **Branch:** feature/ai-llm-clients
 **What:** Created placeholder files for Groq, Cerebras, and Gemini API clients, plus `llmRouter.js` and `streamHandler.js`. No actual API integration yet.
 **Breaking?** No.
 **Teammates:** None — placeholders only.
+
+---
+
+### 2026-03-07 — [FS] Full Architecture Review & Fix Pass (P0–P3)
+
+**Who:** Teammate 1 (Soumadeep) | **Branch:** `fix/fs-architecture-review` ← `development`
+**What:** Reviewed the entire FS runtime for production readiness. Fixed 9 issues across 13 files.
+
+#### P0 — Critical (data-loss bugs)
+
+- **Monkey-patch fix** (`fileSystemStore.js`) — Store was replacing `memfs._triggerWorkspaceUpdate`, silently killing `FS_MUTATED` events and breaking auto-persistence to IndexedDB. Now subscribes to `FS_MUTATED` via the EventBus instead.
+- **Renamed misleading `*Sync` methods** (`memfsService.js` + 8 callers) — `readFileSync` → `readFile`, `writeFileSync` → `writeFile`, `mkdirSync` → `mkdir`, `readdirSync` → `readdir`, `unlinkSync` → `unlink`, `existsSync` → `exists`. All were async (returning Promises) despite the `Sync` suffix.
+  - Updated: `fileSystemAPI.js`, `contextService.js`, `contextSnapshotAPI.js`, `fileWatcher.js`, `storage.test.js`, `fsIntegration.test.js`
+
+#### P1 — Important (missing features & memory)
+
+- **Atomic `rename()`** — Added `memfs.rename(oldPath, newPath)` + `fileSystemAPI.renameFile()` facade
+- **BlobStore GC** (`blobStore.js`) — Added `incRef()`/`decRef()` reference counting, 100 MB size cap, `gc()` sweep for zero-ref blobs. Wired into `memfsService.writeFile` (old blob decRef on overwrite) and `memfsService.unlink` (recursive `_decRefTree`)
+- **`streamingHash` fix** (`largefile.js`) — Was chunking the buffer then merging it back (doubling memory for no reason). Now passes buffer directly to `crypto.subtle.digest()`
+
+#### P2 — Moderate (subscription quality)
+
+- **Path-aware `FS_MUTATED`** — `_triggerWorkspaceUpdate` now includes `changedPath` in the event payload. `fsSubscriptions.onFileChanged` filters by path match, eliminating unnecessary re-renders
+
+#### P3 — Safety (EventBus hardening)
+
+- **Throttle** (`eventBus.js`) — `FS_MUTATED` capped at ~60fps (16ms interval) with trailing emit to guarantee last value delivery
+- **Circuit Breaker** (`eventBus.js`) — 1s sliding window, max 50 emits/sec per event. Trips → suppresses that event for 2s + logs `console.error`. Auto-resets after cooldown
+
+#### Documentation
+
+- **`README.md`** — Updated all 6 public API method names + added `memfs.rename()` (item #7)
+- **`hld_architecture.html`** — Updated 5 old method references (create file flow, delete flow, editor open, AI context builder, AI accept patch)
+
+**Files touched (13):** `memfsService.js`, `fileSystemStore.js`, `fileSystemAPI.js`, `blobStore.js`, `largefile.js`, `eventBus.js`, `fsSubscriptions.js`, `contextService.js`, `contextSnapshotAPI.js`, `fileWatcher.js`, `storage.test.js`, `fsIntegration.test.js`, `README.md`, `hld_architecture.html`
+
+**Breaking?** Yes — **method names changed.** Any code calling `memfs.readFileSync()` etc. must switch to `memfs.readFile()`. All known callers are already updated.
+**Teammates:** Search your code for `readFileSync`, `writeFileSync`, `mkdirSync`, `readdirSync`, `unlinkSync`, `existsSync` — if you call these directly on `memfs`, rename them (drop the `Sync` suffix). If you only use `fileSystemAPI`, you're unaffected.
+
+python -m uvicorn embedding_server:app --host 0.0.0.0 --port 8001
 
 ---

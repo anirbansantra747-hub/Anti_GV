@@ -1,16 +1,4 @@
 import { generateResponse } from '../llm/llmRouter.js';
-import { z } from 'zod';
-
-const criticSchema = z.object({
-  isCorrect: z
-    .boolean()
-    .describe('True if the patch solves the request and has no obvious errors.'),
-  feedback: z
-    .string()
-    .describe(
-      'Explain your reasoning. If isCorrect is false, explain what is wrong and how to fix it.'
-    ),
-});
 
 const criticSystemPrompt = `You are an expert Senior Software Engineer acting as a Code Critic.
 Your job is to review a patch (a set of search/replace edits) proposed by another AI agent and determine if it correctly implements the user's request.
@@ -20,20 +8,27 @@ You will receive:
 2. The current contents of the target file.
 3. The proposed edits (search/replace blocks).
 
-Check for:
-1. Does the code fulfill the user's prompt?
-2. Are there any syntax errors, unresolved variables, or missing imports introduced by the edits?
-3. Does the "Search" block match the original file EXACTLY? If the search block does not perfectly match the file, it will fail to apply.
+Check ALL of the following:
+1. Does the edit fulfill the user's request completely?
+2. Does the SEARCH block exist VERBATIM in the current file content? (Most important check — if the text is not found, the patch will fail to apply.)
+3. Is the edit minimal? It should only change what's needed, not rewrite unrelated code.
+4. Are there syntax errors, missing imports, or unresolved variables introduced by the edit?
+5. Does the REPLACE block accidentally delete code that should stay?
 
-Return JSON with "isCorrect" and "feedback". Be strict.`;
+Be strict. If the SEARCH block text is not found verbatim in the file, that is an automatic FAIL.
+Return JSON: {"isCorrect": boolean, "feedback": "explanation"}`;
 
 /**
  * Reviews a proposed edit block against the file and user prompt.
+ * Uses DeepSeek-R1-0528 (reasoning model) for thorough review.
  * @param {{ prompt: string, fileContent: string, filePath: string, proposedEdits: any[] }} params
  * @returns {Promise<{ isCorrect: boolean, feedback: string }>}
  */
 export async function runCritic(params) {
   const { prompt, fileContent, filePath, proposedEdits } = params;
+  console.log(
+    `[CriticAgent] Reviewing ${filePath} — ${proposedEdits.length} edit(s), fileContent: ${fileContent.length} chars`
+  );
 
   const userContent = `User Request:
 ${prompt}
@@ -45,12 +40,12 @@ Current File Content:
 ${fileContent}
 \`\`\`
 
-Proposed Edits (to apply to the file):
+Proposed Edits:
 \`\`\`json
 ${JSON.stringify(proposedEdits, null, 2)}
 \`\`\`
 
-Analyze the edits. Are they correct? Respond in JSON matching the schema.`;
+Analyze these edits carefully. Check that each "search" string exists verbatim in the file content. Respond in JSON.`;
 
   try {
     const responseText = await generateResponse(
@@ -58,17 +53,19 @@ Analyze the edits. Are they correct? Respond in JSON matching the schema.`;
         { role: 'system', content: criticSystemPrompt },
         { role: 'user', content: userContent },
       ],
-      { jsonMode: true }
+      { task: 'critic', jsonMode: true, max_tokens: 2048 }
     );
     const response = JSON.parse(responseText);
 
+    console.log(
+      `[CriticAgent] Result: ${response.isCorrect ? '✅ PASS' : '❌ FAIL'} — ${String(response.feedback).substring(0, 80)}`
+    );
     return {
       isCorrect: response.isCorrect,
       feedback: response.feedback,
     };
   } catch (error) {
     console.error('[CriticAgent] Evaluation failed:', error);
-    // Be lenient if the critic crashes, assume true to not block the pipeline
     return { isCorrect: true, feedback: 'Critic failed to evaluate, passing by default.' };
   }
 }

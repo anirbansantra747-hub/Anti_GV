@@ -30,33 +30,13 @@ export function isLargeFile(content) {
 }
 
 /**
- * Stream-hashes an ArrayBuffer in 1MB chunks to avoid OOM issues.
- * Returns a hex SHA-256 of the full content.
+ * Hash an ArrayBuffer using crypto.subtle.digest directly.
+ * Web Crypto handles large buffers internally without needing manual chunking.
  * @param {ArrayBuffer} buffer
  * @returns {Promise<string>}
  */
 export async function streamingHash(buffer) {
-  const CHUNK = 1 * 1024 * 1024; // 1MB chunks
-  const view  = new Uint8Array(buffer);
-  let offset  = 0;
-
-  // Web Crypto doesn't natively stream, so we concatenate chunks
-  // For very large files this is the safest approach without TransformStreams.
-  const pieces = [];
-  while (offset < view.byteLength) {
-    pieces.push(view.slice(offset, offset + CHUNK));
-    offset += CHUNK;
-  }
-
-  // Flatten back to a single buffer for hashing
-  const merged = new Uint8Array(view.byteLength);
-  let pos = 0;
-  for (const piece of pieces) {
-    merged.set(piece, pos);
-    pos += piece.byteLength;
-  }
-
-  const hashBuffer = await crypto.subtle.digest('SHA-256', merged.buffer);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
   return Array.from(new Uint8Array(hashBuffer))
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
@@ -77,8 +57,8 @@ export function getLargeFileInfo(fileNode, buffer) {
     : 'Size unknown';
 
   return {
-    name:    fileNode.name,
-    blobId:  fileNode.blobId,
+    name: fileNode.name,
+    blobId: fileNode.blobId,
     sizeLabel,
     message: `This file is too large to display in the editor (${sizeLabel}). It is safely stored and tracked by its content hash.`,
   };
@@ -95,7 +75,7 @@ export async function processFileContent(content) {
   const large = isLargeFile(content);
 
   if (large && content instanceof ArrayBuffer) {
-    const hash   = await streamingHash(content);
+    const hash = await streamingHash(content);
     const blobId = hash;
     if (!blobStore.exists(blobId)) {
       blobStore.blobs.set(blobId, content);

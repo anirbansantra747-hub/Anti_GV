@@ -2,28 +2,56 @@ import { classifyIntent } from './intentClassifier.js';
 import { assembleContext } from './contextAssembler.js';
 import { generatePlan } from './plannerAgent.js';
 import { generateCodeEdits } from './coderAgent.js';
-import { generateResponse } from '../llm/llmRouter.js';
+import { generateResponse, streamResponse } from '../llm/llmRouter.js';
+import { handleStream } from '../llm/streamHandler.js';
+import crypto from 'crypto';
+import { addMessage } from '../db/chatService.js';
 
 /**
  * Main Agent Orchestrator Pipeline
- * Runs the sequence: Intent -> Context -> Plan -> Code -> Verify
+ * Runs the sequence: Intent -> Context -> Plan -> Approve -> Code -> Verify
+ *
+ * @param {Object} params
+ * @param {() => boolean} params.isCancelled - Returns true when user terminates the pipeline
  */
-export const runAgentPipeline = async ({ prompt, frontendContext, serverContext, socket }) => {
+export const runAgentPipeline = async ({
+  prompt,
+  frontendContext,
+  serverContext,
+  socket,
+  waitForApproval,
+  chatId,
+  workspaceId,
+  isCancelled = () => false,
+}) => {
   try {
+    console.log(`\n[AgentPipeline] ═══════════════════════════════════════════`);
+    console.log(`[AgentPipeline] New pipeline started`);
+    console.log(`[AgentPipeline] Prompt: ${prompt.slice(0, 80)}${prompt.length > 80 ? '…' : ''}`);
+    console.log(`[AgentPipeline] ═══════════════════════════════════════════\n`);
+
     socket.emit('agent:thinking', { message: 'Classifying intent...' });
 
-    // 1. Classify Intent
+    // ── Phase 1: Classify Intent ─────────────────────────────────────────
     const { intent, confidence } = await classifyIntent(prompt);
+    console.log(`[AgentPipeline] P0 Intent: ${intent} (${Math.round(confidence * 100)}%)`);
     socket.emit('agent:thinking', {
       message: `Intent classified as ${intent} (${Math.round(confidence * 100)}% confidence)`,
     });
 
+    if (isCancelled()) {
+      socket.emit('agent:done', { message: 'Terminated.' });
+      return;
+    }
+
     // Handle non-coding intents early
     if (intent === 'ASK') {
+      console.log(`[AgentPipeline] Routing to ASK handler (no code changes)`);
       socket.emit('agent:thinking', { message: 'Assembling codebase context...' });
-      const fullContext = assembleContext(frontendContext, serverContext);
+      const fullContext = await assembleContext(frontendContext, serverContext, prompt);
 
       socket.emit('agent:thinking', { message: 'Answering question...' });
+      socket.emit('agent:step:done', { stepId: 'ask-prep' });
 
       const askPrompt = `
 You are an expert Senior Software Engineer.
@@ -35,46 +63,120 @@ ${fullContext}
 USER QUESTION:
 ${prompt}
 `;
-      const answer = await generateResponse([
-        { role: 'system', content: 'You are a helpful coding assistant.' },
-        { role: 'user', content: askPrompt },
-      ]);
 
-      socket.emit('agent:done', { message: answer });
+      const messageId = crypto.randomUUID();
+      socket.emit('agent:message:start', { messageId });
+
+      const { stream, provider } = await streamResponse(
+        [
+          { role: 'system', content: 'You are a helpful coding assistant.' },
+          { role: 'user', content: askPrompt },
+        ],
+        { model: 'llama-3.3-70b-versatile' }
+      );
+
+      const answer = await handleStream(stream, socket, provider, {
+        eventName: 'agent:message:stream',
+        extraPayload: { messageId },
+      });
+
+      console.log(`[AgentPipeline] ASK response streamed successfully`);
+      socket.emit('agent:done', { messageId, message: '' });
+
+      if (workspaceId && chatId) {
+        await addMessage(workspaceId, chatId, 'assistant', answer || '');
+      }
       return;
     }
 
-    // 2. Assemble Context
+    // ── Phase 2: Assemble Context ────────────────────────────────────────
+    console.log(`[AgentPipeline] P1 Assembling codebase context...`);
     socket.emit('agent:thinking', { message: 'Assembling codebase context...' });
-    const fullContext = assembleContext(frontendContext, serverContext);
+    const fullContext = await assembleContext(frontendContext, serverContext, prompt);
+    console.log(`[AgentPipeline] P1 Context assembled (${fullContext.length} chars)`);
 
-    // 3. Planning (Module 5)
+    if (isCancelled()) {
+      socket.emit('agent:done', { message: 'Terminated.' });
+      return;
+    }
+
+    // ── Phase 3: Planning ────────────────────────────────────────────────
+    console.log(`[AgentPipeline] P2 Generating execution plan...`);
     socket.emit('agent:thinking', { message: 'Generating execution plan...' });
     socket.emit('agent:step:start', { stepId: 'plan', description: 'Proposed Plan' });
 
     const plan = await generatePlan(prompt, fullContext);
+    console.log(`[AgentPipeline] P2 Plan generated: ${plan.steps?.length || 0} step(s)`);
+    plan.steps?.forEach((s, i) =>
+      console.log(`[AgentPipeline]   Step ${i + 1}: [${s.action}] ${s.filePath} — ${s.description}`)
+    );
 
     socket.emit('agent:plan', plan);
     socket.emit('agent:step:done', { stepId: 'plan' });
 
-    // In a real flow, we wait for 'agent:approve' here before continuing to Coding
-    // For now, we simulate continuing immediately
+    if (workspaceId && chatId) {
+      await addMessage(workspaceId, chatId, 'assistant', `Plan: ${plan.summary || 'No summary'}`);
+    }
 
-    // 4. Coding (Module 6)
+    if (isCancelled()) {
+      socket.emit('agent:done', { message: 'Terminated.' });
+      return;
+    }
+
+    // ── Phase 3.5: APPROVAL GATE ─────────────────────────────────────────
+    if (waitForApproval) {
+      console.log(`[AgentPipeline] P3 ⏸️  Waiting for user approval...`);
+      socket.emit('agent:thinking', { message: 'Waiting for your approval...' });
+
+      const { approved } = await waitForApproval();
+
+      if (!approved) {
+        console.log(`[AgentPipeline] P3 ❌ Plan rejected by user — pipeline aborted`);
+        socket.emit('agent:done', { message: 'Plan rejected. Pipeline stopped.' });
+        return;
+      }
+
+      console.log(`[AgentPipeline] P3 ✅ Plan approved — continuing to code generation`);
+    } else {
+      console.log(`[AgentPipeline] P3 ⚠️  No approval gate — auto-continuing (dev mode)`);
+    }
+
+    if (isCancelled()) {
+      socket.emit('agent:done', { message: 'Terminated.' });
+      return;
+    }
+
+    // ── Phase 4+5: Coding + Verification ─────────────────────────────────
+    console.log(`[AgentPipeline] P4+P5 Coding + Verification starting...`);
     socket.emit('agent:thinking', { message: 'Applying edits based on plan...' });
 
-    // Instead of mock code generation, we pass the plan + context to the real Coder Agent
-    const edits = await generateCodeEdits(plan, fullContext, socket);
+    const edits = await generateCodeEdits(plan, fullContext, socket, isCancelled);
 
-    // Once the edits are fully generated, signal that the coding phase is done
+    if (isCancelled()) {
+      socket.emit('agent:done', { message: 'Terminated.' });
+      return;
+    }
+
+    console.log(`[AgentPipeline] P4+P5 Complete: ${edits.length} file(s) edited`);
     socket.emit('agent:step:done', { stepId: 'code-generation' });
 
-    // 5. Verification (Module 8 placeholder)
-    // socket.emit('agent:thinking', { message: 'Verifying code...' });
+    if (workspaceId && chatId) {
+      const files = (plan.steps || []).map((s) => s.filePath).filter(Boolean);
+      const unique = Array.from(new Set(files)).slice(0, 10);
+      await addMessage(
+        workspaceId,
+        chatId,
+        'assistant',
+        `Applied edits for ${unique.length} file(s): ${unique.join(', ')}`
+      );
+    }
 
+    console.log(`[AgentPipeline] ═══════════════════════════════════════════`);
+    console.log(`[AgentPipeline] Pipeline complete ✅`);
+    console.log(`[AgentPipeline] ═══════════════════════════════════════════\n`);
     socket.emit('agent:done', { message: 'Pipeline complete.' });
   } catch (error) {
-    console.error('[AgentPipeline] Error:', error);
+    console.error('[AgentPipeline] ❌ Error:', error);
     socket.emit('agent:error', {
       message: error.message || 'An unknown error occurred in the agent pipeline',
     });

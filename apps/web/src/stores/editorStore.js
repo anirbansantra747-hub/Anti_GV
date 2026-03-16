@@ -8,7 +8,7 @@
 import { create } from 'zustand';
 import { bus, Events } from '../services/eventBus.js';
 
-export const useEditorStore = create((set, get) => ({
+export const useEditorStore = create((set) => ({
   /** @type {string | null} Currently focused file path */
   activeFile: null,
 
@@ -21,14 +21,26 @@ export const useEditorStore = create((set, get) => ({
   /** @type {string[]} Paths edited in the last 5 minutes */
   recentlyEdited: [],
 
+  /**
+   * @type {{ line: number, column: number, selected: string }}
+   * Current cursor position in Monaco Editor — updated on every cursor move.
+   */
+  cursorPosition: { line: 1, column: 1, selected: '' },
+
   // ── Actions ─────────────────────────────────────────────────────────────
+
+  /**
+   * Update cursor position. Called by Monaco's onDidChangeCursorPosition.
+   * @param {{ line: number, column: number, selected?: string }} pos
+   */
+  setCursor({ line, column, selected = '' }) {
+    set({ cursorPosition: { line, column, selected } });
+  },
 
   /** Open a file tab. Sets it as active. */
   openFile(path) {
     set((state) => {
-      const openTabs = state.openTabs.includes(path)
-        ? state.openTabs
-        : [...state.openTabs, path];
+      const openTabs = state.openTabs.includes(path) ? state.openTabs : [...state.openTabs, path];
       return { activeFile: path, openTabs };
     });
   },
@@ -38,9 +50,7 @@ export const useEditorStore = create((set, get) => ({
     set((state) => {
       const openTabs = state.openTabs.filter((t) => t !== path);
       const activeFile =
-        state.activeFile === path
-          ? openTabs[openTabs.length - 1] ?? null
-          : state.activeFile;
+        state.activeFile === path ? (openTabs[openTabs.length - 1] ?? null) : state.activeFile;
 
       const dirtyFiles = new Set(state.dirtyFiles);
       dirtyFiles.delete(path);
@@ -49,15 +59,22 @@ export const useEditorStore = create((set, get) => ({
     });
   },
 
+  /** Close all tabs and reset editor view state. */
+  closeAllTabs() {
+    set({
+      activeFile: null,
+      openTabs: [],
+      dirtyFiles: new Set(),
+      recentlyEdited: [],
+    });
+  },
+
   /** Mark a file as dirty (unsaved local changes). */
   markDirty(path) {
     set((state) => {
       const dirtyFiles = new Set(state.dirtyFiles);
       dirtyFiles.add(path);
-      const recentlyEdited = [
-        path,
-        ...state.recentlyEdited.filter((p) => p !== path),
-      ].slice(0, 20); // Keep last 20 entries
+      const recentlyEdited = [path, ...state.recentlyEdited.filter((p) => p !== path)].slice(0, 20); // Keep last 20 entries
       return { dirtyFiles, recentlyEdited };
     });
   },
@@ -86,4 +103,10 @@ export const useEditorStore = create((set, get) => ({
 bus.on(Events.CACHE_SAVED, ({ savedPaths }) => {
   const store = useEditorStore.getState();
   savedPaths?.forEach((p) => store.clearDirty(p));
+});
+
+// On workspace reset, clear open tabs and dirty state to avoid stale files.
+bus.on(Events.WS_RESET, () => {
+  const store = useEditorStore.getState();
+  store.closeAllTabs();
 });

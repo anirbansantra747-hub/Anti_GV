@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file persistenceService.js
  * @description Tier 2 persistence layer: debounced flat serialization of the
@@ -79,10 +80,93 @@ export async function persistNow() {
 export function schedulePersist() {
   if (_debounceTimer) clearTimeout(_debounceTimer);
   _debounceTimer = setTimeout(() => {
-    persistNow().catch((err) =>
-      console.error('[PersistenceService] Failed to write to IDB:', err)
-    );
+    persistNow().catch((err) => console.error('[PersistenceService] Failed to write to IDB:', err));
   }, LIMITS.AUTOSAVE_DEBOUNCE_MS);
+}
+
+/**
+ * Attempt to hydrate the workspace from IndexedDB.
+ * @returns {Promise<boolean>} True if successfully loaded, false otherwise.
+ */
+export async function loadFromIDB() {
+  try {
+    const payload = await localforage.getItem(IDB_KEY);
+    if (!payload || !payload.files || !payload.blobs) return false;
+
+    // Reset tree
+    memfs.workspace.root = {
+      type: 'dir',
+      id: 'root',
+      name: '/',
+      children: new Map(),
+    };
+
+    // Restore blobs first.
+    // IndexedDB/localForage may serialize ArrayBuffers as something else depending on the driver.
+    // Ensure we store them exactly as string or ArrayBuffer.
+    for (const [blobId, rawContent] of Object.entries(payload.blobs)) {
+      let buffer = rawContent;
+      if (rawContent && typeof rawContent === 'object' && !(rawContent instanceof ArrayBuffer)) {
+        // Fallback for some localforage drivers returning Uint8Array or Buffer-like objects
+        if (rawContent.buffer instanceof ArrayBuffer) {
+          buffer = rawContent.buffer;
+        } else if (rawContent instanceof Uint8Array) {
+          buffer = rawContent.buffer;
+        } else if (rawContent.type === 'Buffer' && Array.isArray(rawContent.data)) {
+          buffer = new Uint8Array(rawContent.data).buffer;
+        }
+      }
+      blobStore.blobs.set(blobId, buffer);
+      // We should arguably also invoke blobStore.put() to update its internal size & refcounts,
+      // but manually setting it and letting the file tree walk do it, or just trusting the cache, is fine for a raw hydrate.
+      // Easiest is to manually increment refCounts based on the files payload below.
+    }
+
+    // Reconstruct files and directories
+    for (const [fullPath, meta] of Object.entries(payload.files)) {
+      const parts = fullPath.split('/').filter(Boolean);
+      const fileName = parts.pop();
+      let currentDir = memfs.workspace.root;
+
+      // Ensure intermediate directories exist
+      let currentPath = '';
+      for (const part of parts) {
+        currentPath += `/${part}`;
+        if (!currentDir.children.has(part)) {
+          currentDir.children.set(part, {
+            type: 'dir',
+            id: crypto.randomUUID(),
+            name: part,
+            children: new Map(),
+          });
+        }
+        currentDir = currentDir.children.get(part);
+      }
+
+      // Add file
+      currentDir.children.set(fileName, {
+        type: 'file',
+        id: crypto.randomUUID(),
+        name: fileName,
+        hash: meta.hash,
+        blobId: meta.blobId,
+        binary: meta.binary,
+      });
+
+      // Increment the reference count in blobStore to correctly track memory usage
+      blobStore.incRef(meta.blobId);
+    }
+
+    memfs.workspace.id = payload.workspaceId || crypto.randomUUID();
+    memfs.workspace.version = payload.version || 'initial-root-hash';
+
+    bus.emit(Events.FS_MUTATED, { workspaceId: memfs.workspace.id, path: null });
+    console.log(`[Tier 2] Restored ${Object.keys(payload.files).length} files from IDB.`);
+    return true;
+  } catch (err) {
+    console.warn('[PersistenceService] Failed to parse IDB payload:', err);
+    return false;
+  }
 }
 
 // ── Auto-wire to EventBus ─────────────────────────────────────────────────────

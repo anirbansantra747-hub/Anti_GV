@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file contextSnapshotAPI.js
  * @description Token-budget-aware context snapshot API for the AI Agent module.
@@ -43,7 +44,7 @@ class ContextSnapshotAPI {
     includeTree = true,
     sourceModule = 'AI_AGENT',
   } = {}) {
-    const targetPaths = files ?? memfs.readdirSync('/', { recursive: true });
+    const targetPaths = files ?? memfs.readdir('/', { recursive: true });
     const sections = [];
     const includedFiles = [];
     const excludedFiles = [];
@@ -51,7 +52,8 @@ class ContextSnapshotAPI {
 
     // 1. File tree (lightweight, always included if requested)
     if (includeTree) {
-      const allPaths = memfs.readdirSync('/', { recursive: true })
+      const allPaths = memfs
+        .readdir('/', { recursive: true })
         .filter((p) => !p.includes('node_modules'));
       const treeSection = `## File Tree\n\`\`\`\n${allPaths.join('\n')}\n\`\`\``;
       sections.push(treeSection);
@@ -61,7 +63,7 @@ class ContextSnapshotAPI {
     // 2. Requested file contents (with budget enforcement)
     for (const path of targetPaths) {
       if (charsUsed >= maxChars) break;
-      if (!memfs.existsSync(path)) continue;
+      if (!memfs.exists(path)) continue;
 
       try {
         guardRead(path);
@@ -75,7 +77,7 @@ class ContextSnapshotAPI {
           continue;
         }
 
-        const content = await memfs.readFileSync(path, 'utf8');
+        const content = await memfs.readFile(path, 'utf8');
 
         if (isLargeFile(content)) {
           excludedFiles.push(path);
@@ -84,9 +86,8 @@ class ContextSnapshotAPI {
 
         // Token-budget trim
         const remaining = maxChars - charsUsed;
-        const trimmed = content.length > remaining
-          ? content.slice(0, remaining) + '\n… [truncated]'
-          : content;
+        const trimmed =
+          content.length > remaining ? content.slice(0, remaining) + '\n… [truncated]' : content;
 
         const section = `## ${path}\n\`\`\`\n${trimmed}\n\`\`\``;
         sections.push(section);
@@ -110,7 +111,8 @@ class ContextSnapshotAPI {
    * @returns {string}
    */
   getFileTree() {
-    return memfs.readdirSync('/', { recursive: true })
+    return memfs
+      .readdir('/', { recursive: true })
       .filter((p) => !p.includes('node_modules'))
       .join('\n');
   }

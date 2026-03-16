@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file diffService.js
  * @description The V3 Shadow Tree DiffService.
@@ -95,6 +96,7 @@ class DiffService {
     };
 
     this._transactions.set(txId, tx);
+    bus.emit(Events.AI_EDIT_INTENT);
     console.log(`[DiffService] Transaction opened: ${txId}`);
     return txId;
   }
@@ -124,19 +126,75 @@ class DiffService {
         lines = [];
       }
     }
+    // If memfs has a stub (empty blob) and the server sent the actual disk content, use it
+    if (lines.join('').length === 0 && patch._baseContent) {
+      lines = patch._baseContent.split('\n');
+    }
 
     // Apply each operation in order
     for (const op of patch.operations) {
       if (op.type === 'replace') {
-        const start = (op.startLine ?? 1) - 1;
-        const end   = (op.endLine   ?? start + 1) - 1;
-        lines.splice(start, end - start + 1, ...op.content.split('\n'));
+        if (op.search) {
+          // Native explicit search/replace
+          const searchLines = op.search.split('\n');
+          // If Groq includes a trailing newline in the search block, pop it so we don't look for an empty last line
+          if (searchLines.length > 0 && searchLines[searchLines.length - 1] === '') {
+            searchLines.pop();
+          }
+          const contentLines = op.content.split('\n');
+          if (contentLines.length > 0 && contentLines[contentLines.length - 1] === '') {
+            contentLines.pop(); // Similarly pop trailing newline from content
+          }
+
+          let found = false;
+          for (let i = 0; i <= lines.length - searchLines.length; i++) {
+            // Pass 1: exact match
+            let exact = true;
+            for (let j = 0; j < searchLines.length; j++) {
+              if (lines[i + j] !== searchLines[j]) {
+                exact = false;
+                break;
+              }
+            }
+            if (exact) {
+              lines.splice(i, searchLines.length, ...contentLines);
+              found = true;
+              break;
+            }
+            // Pass 2: trimmed match — handles LLM whitespace inconsistencies
+            let trimmed = true;
+            for (let j = 0; j < searchLines.length; j++) {
+              if ((lines[i + j] ?? '').trim() !== searchLines[j].trim()) {
+                trimmed = false;
+                break;
+              }
+            }
+            if (trimmed) {
+              lines.splice(i, searchLines.length, ...contentLines);
+              found = true;
+              break;
+            }
+          }
+
+          if (!found) {
+            console.warn(
+              '[DiffService] Search block not found (exact or trimmed):',
+              op.search?.slice(0, 80)
+            );
+          }
+        } else {
+          // Legacy line-based replace
+          const start = (op.startLine ?? 1) - 1;
+          const end = (op.endLine ?? start + 1) - 1;
+          lines.splice(start, end - start + 1, ...op.content.split('\n'));
+        }
       } else if (op.type === 'insert') {
         const at = (op.startLine ?? lines.length + 1) - 1;
         lines.splice(at, 0, ...op.content.split('\n'));
       } else if (op.type === 'delete') {
+        // Legacy line-based delete
         const start = (op.startLine ?? 1) - 1;
-        const end   = (op.endLine   ?? start) - 1;
+        const end = (op.endLine ?? start) - 1;
         lines.splice(start, end - start + 1);
       }
     }
@@ -155,6 +213,10 @@ class DiffService {
 
     if (!tx.patchedPaths.includes(patch.path)) {
       tx.patchedPaths.push(patch.path);
+    }
+
+    if (memfs.workspace.state === 'AI_PENDING') {
+      bus.emit(Events.DIFF_READY);
     }
 
     console.log(`[DiffService] Patch applied to shadow: ${patch.path}`);
@@ -202,7 +264,7 @@ class DiffService {
     memfs.workspace.root = tx.shadowRoot;
 
     // Compute and update the new root hash (version)
-    const newVersion = await snapshotStore.computeDirHash(tx.shadowRoot);
+    const newVersion = await snapshotStore.computeTreeHash(tx.shadowRoot);
     memfs.workspace.version = newVersion;
     memfs.workspace.state = 'IDLE';
     memfs.workspace.locked = false;
@@ -219,7 +281,9 @@ class DiffService {
 
     // Notify all listeners: tree changed
     bus.emit(Events.FS_MUTATED, { workspaceId: memfs.workspace.id, source: 'commit' });
-    console.log(`[DiffService] Transaction ${txId} committed. New version: ${newVersion.slice(0, 8)}…`);
+    console.log(
+      `[DiffService] Transaction ${txId} committed. New version: ${newVersion.slice(0, 8)}…`
+    );
   }
 
   /**
@@ -232,6 +296,28 @@ class DiffService {
     tx.status = 'rolled_back';
     this._transactions.delete(txId);
     console.log(`[DiffService] Transaction ${txId} rolled back.`);
+  }
+
+  /**
+   * Discard specific paths from the shadow tree by restoring them from Tier 1.
+   * @param {string} txId
+   * @param {string[]} paths
+   */
+  discardPaths(txId, paths = []) {
+    const tx = this._getOpenTx(txId);
+    for (const filePath of paths) {
+      const { newRoot, targetParent, fileName } = this._pathCopy(tx.shadowRoot, filePath);
+      tx.shadowRoot = newRoot;
+
+      const originalNode = this._getNode(memfs.workspace.root, filePath);
+      if (!originalNode) {
+        targetParent.children.delete(fileName);
+      } else {
+        targetParent.children.set(fileName, snapshotStore.cloneTree(originalNode));
+      }
+
+      tx.patchedPaths = tx.patchedPaths.filter((p) => p !== filePath);
+    }
   }
 
   /**
@@ -280,6 +366,16 @@ class DiffService {
       );
     }
     return tx;
+  }
+
+  _getNode(root, filePath) {
+    const segments = filePath.split('/').filter(Boolean);
+    let node = root;
+    for (const seg of segments) {
+      node = node.children?.get(seg);
+      if (!node) return null;
+    }
+    return node;
   }
 
   /** Expose active transactions (read-only) for DiffViewer UI */

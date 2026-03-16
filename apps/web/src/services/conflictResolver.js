@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file conflictResolver.js
  * @description Handles the CONFLICT workspace state when remote.version !== local.version.
@@ -67,10 +68,8 @@ class ConflictResolver {
    * @returns {FileDiff[]}
    */
   _buildDiffList() {
-    const local  = this._flattenTree(memfs.workspace.root);   // current Tier 1 (local)
-    const remote = this._remoteRoot
-      ? this._flattenTree(this._remoteRoot)
-      : {};
+    const local = this._flattenTree(memfs.workspace.root); // current Tier 1 (local)
+    const remote = this._remoteRoot ? this._flattenTree(this._remoteRoot) : {};
 
     const all = new Set([...Object.keys(local), ...Object.keys(remote)]);
     const diffs = [];
@@ -80,9 +79,9 @@ class ConflictResolver {
       const r = remote[path];
 
       if (!l && r) {
-        diffs.push({ path, status: 'added',    remoteHash: r.hash });
+        diffs.push({ path, status: 'added', remoteHash: r.hash });
       } else if (l && !r) {
-        diffs.push({ path, status: 'deleted',  localHash: l.hash });
+        diffs.push({ path, status: 'deleted', localHash: l.hash });
       } else if (l.hash !== r.hash) {
         diffs.push({ path, status: 'modified', localHash: l.hash, remoteHash: r.hash });
       } else {
@@ -113,10 +112,10 @@ class ConflictResolver {
 
     // Compute the new version hash and commit
     const { snapshotStore } = await import('./snapshotService.js');
-    const newVersion = await snapshotStore.computeDirHash(memfs.workspace.root);
+    const newVersion = await snapshotStore.computeTreeHash(memfs.workspace.root);
     memfs.workspace.version = newVersion;
-    memfs.workspace.state   = 'IDLE';
-    memfs.workspace.locked  = false;
+    memfs.workspace.state = 'IDLE';
+    memfs.workspace.locked = false;
 
     bus.emit(Events.FS_MUTATED, { workspaceId: memfs.workspace.id, source: 'conflict_resolve' });
     bus.emit(Events.WS_STATE_CHANGED, { from: 'CONFLICT', to: 'IDLE' });

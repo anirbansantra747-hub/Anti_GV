@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 /**
  * @file WorkspaceContracts.js
  * @description Core structural contracts and explicit state formats for the V3 Workspace Architecture.
@@ -11,7 +12,7 @@ export const WorkspaceState = {
   DIFF_REVIEW: 'DIFF_REVIEW',
   COMMITTING: 'COMMITTING',
   CONFLICT: 'CONFLICT',
-  ERROR: 'ERROR'
+  ERROR: 'ERROR',
 };
 
 /**
@@ -62,19 +63,25 @@ export const BlobStoreInterface = {
    * @param {string | ArrayBuffer} content
    * @returns {{ blobId: string, hash: string }}
    */
-  put: (content) => { throw new Error('Not implemented'); },
+  put: (content) => {
+    throw new Error('Not implemented');
+  },
 
   /**
    * @param {string} blobId
    * @returns {Promise<ArrayBuffer | string>}
    */
-  get: (blobId) => { throw new Error('Not implemented'); },
+  get: (blobId) => {
+    throw new Error('Not implemented');
+  },
 
   /**
    * @param {string} hash
    * @returns {boolean}
    */
-  exists: (hash) => { throw new Error('Not implemented'); }
+  exists: (hash) => {
+    throw new Error('Not implemented');
+  },
 };
 
 /**
@@ -85,31 +92,41 @@ export const FileSystemTransactionInterface = {
   /**
    * @returns {string} Transaction ID
    */
-  beginTransaction: () => { throw new Error('Not implemented'); },
+  beginTransaction: () => {
+    throw new Error('Not implemented');
+  },
 
   /**
    * @param {string} txId
    * @param {FilePatch} patch
    */
-  applyPatch: (txId, patch) => { throw new Error('Not implemented'); },
+  applyPatch: (txId, patch) => {
+    throw new Error('Not implemented');
+  },
 
   /**
    * @param {string} txId
    * @returns {boolean} True if structurally valid
    */
-  validate: (txId) => { throw new Error('Not implemented'); },
+  validate: (txId) => {
+    throw new Error('Not implemented');
+  },
 
   /**
    * Commit the transaction, updating the version rootTreeHash.
    * @param {string} txId
    */
-  commit: (txId) => { throw new Error('Not implemented'); },
+  commit: (txId) => {
+    throw new Error('Not implemented');
+  },
 
   /**
    * Cancel and discard the Shadow Tree.
    * @param {string} txId
    */
-  rollback: (txId) => { throw new Error('Not implemented'); }
+  rollback: (txId) => {
+    throw new Error('Not implemented');
+  },
 };
 
 /**
