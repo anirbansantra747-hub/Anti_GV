@@ -142,6 +142,8 @@ export const useAgentStore = create((set, get) => {
             }
             const patch = {
               path: absolutePath,
+              // Pass actual disk content so diffService can use it when memfs has a stub (empty blob)
+              _baseContent: payload.baseContent || null,
               operations: parsedChunk.edits.map((edit) => ({
                 type: edit.search ? 'replace' : 'insert',
                 search: edit.search || undefined,
@@ -434,6 +436,12 @@ export const useAgentStore = create((set, get) => {
       if (!socket) return;
       socket.emit('agent:cancel', {});
       set({ isThinking: false, currentPlan: null });
+    },
+
+    terminate: () => {
+      if (!socket) return;
+      socket.emit('agent:terminate', {});
+      set({ isThinking: false, thinkingMessage: '', currentPlan: null });
     },
 
     finalizeDiff: async ({ acceptedPaths = [], rejectedPaths = [] } = {}) => {

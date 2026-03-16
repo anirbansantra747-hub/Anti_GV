@@ -14,11 +14,7 @@ import { fileSystemAPI } from '../../services/fileSystemAPI.js';
 import { bus, Events } from '../../services/eventBus.js';
 import { getLanguageFromExtension } from '@antigv/shared';
 import LargeFileView from './LargeFileView.jsx';
-import {
-  openDirectoryViaFSA,
-  openFilesViaInput,
-  supportsDirectoryPicker,
-} from '../../services/localFileService.js';
+import { openFilesViaInput } from '../../services/localFileService.js';
 import { workspaceAccessService } from '../../services/workspaceAccessService.js';
 import InlineDiffReview from './InlineDiffReview.jsx';
 
@@ -165,9 +161,30 @@ export default function MonacoEditor({ onContentLoad, onCursorPositionChange }) 
 
     if (isHydrating && !contentCache.has(activeFile)) return;
 
+    const loadFromSocket = (path) => {
+      if (!socket) return;
+      socket.emit('fs:read', { path }, (response) => {
+        const real = response?.success && response.content != null ? response.content : '';
+        contentCache.set(path, real);
+        // Hydrate memfs with real content so future reads + diffs work (best-effort, may fail if AI_PENDING)
+        if (real) {
+          fileSystemAPI.writeFile(path, real, { sourceModule: 'UI', silent: true }).catch(() => {});
+        }
+        if (editorRef.current && currentPathRef.current === path) {
+          editorRef.current.setValue(real);
+        }
+        onContentLoad?.(real);
+      });
+    };
+
     fileSystemAPI
       .readFile(activeFile)
       .then((content) => {
+        // Empty content + not yet cached = stub file — fetch real content from server
+        if (content === '' && !contentCache.has(activeFile)) {
+          loadFromSocket(activeFile);
+          return;
+        }
         contentCache.set(activeFile, content);
         if (editorRef.current && currentPathRef.current === activeFile) {
           if (editorRef.current.getValue() !== content) {
@@ -177,6 +194,11 @@ export default function MonacoEditor({ onContentLoad, onCursorPositionChange }) 
         onContentLoad?.(content);
       })
       .catch(() => {
+        // File missing from memfs entirely — try server directly
+        if (!contentCache.has(activeFile)) {
+          loadFromSocket(activeFile);
+          return;
+        }
         contentCache.set(activeFile, '');
         if (editorRef.current && currentPathRef.current === activeFile) {
           if (editorRef.current.getValue() !== '') {
@@ -261,7 +283,6 @@ export default function MonacoEditor({ onContentLoad, onCursorPositionChange }) 
           line: pos.lineNumber,
           column: pos.column,
           selected,
-
         });
       });
 
@@ -314,26 +335,25 @@ export default function MonacoEditor({ onContentLoad, onCursorPositionChange }) 
           meta={[
             { label: 'Save target', value: 'No folder linked' },
             { label: 'Quick open', value: 'Ctrl+P' },
-            {
-              label: 'Import mode',
-              value: supportsDirectoryPicker ? 'Direct folder open' : 'Fallback file import',
-            },
           ]}
           actions={
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <button
                 className="brutalist-button"
                 onClick={() => {
-                  if (supportsDirectoryPicker) {
-                    openDirectoryViaFSA().catch((error) =>
-                      console.error('[MonacoEditor] Open folder failed:', error)
-                    );
+                  const socket = useAgentStore.getState().socket;
+                  if (!socket) {
+                    console.error('[MonacoEditor] Socket not connected');
                     return;
                   }
-
-                  openFilesViaInput({ directory: true }).catch((error) =>
-                    console.error('[MonacoEditor] Open folder import failed:', error)
-                  );
+                  console.log('[MonacoEditor] Emitting fs:pick_folder to open folder picker');
+                  socket.emit('fs:pick_folder', {}, (response) => {
+                    if (response?.success) {
+                      console.log(`[MonacoEditor] Folder opened successfully: ${response.newRoot}`);
+                    } else if (!response?.canceled) {
+                      console.error('[MonacoEditor] Failed to open folder:', response?.error);
+                    }
+                  });
                 }}
               >
                 Open Folder

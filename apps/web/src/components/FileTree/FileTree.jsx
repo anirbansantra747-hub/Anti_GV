@@ -15,12 +15,8 @@ import { Tree } from 'react-arborist';
 import { Search, X } from 'lucide-react';
 import { useFileSystemStore } from '../../stores/fileSystemStore.js';
 import { useEditorStore } from '../../stores/editorStore.js';
-import {
-  handleDrop,
-  openDirectoryViaFSA,
-  openFilesViaInput,
-  supportsDirectoryPicker,
-} from '../../services/localFileService.js';
+import { useAgentStore } from '../../stores/agentStore.js';
+import { handleDrop } from '../../services/localFileService.js';
 import FileNode from './FileNode.jsx';
 import FileTreeActions from './FileTreeActions.jsx';
 import ExplorerMenu from './ExplorerMenu.jsx';
@@ -38,6 +34,7 @@ function toArboristNodes(nodes, parentPath = '') {
 
 export default function FileTree() {
   const treeData = useFileSystemStore((s) => s.treeData);
+  const socket = useAgentStore((s) => s.socket);
   const [selectedPath, setSelectedPath] = useState(null); // reactive so FileTreeActions re-renders
   const [isDragOver, setIsDragOver] = useState(false);
   const [dropProgress, setDropProgress] = useState(null);
@@ -96,6 +93,21 @@ export default function FileTree() {
     } finally {
       setTimeout(() => setDropProgress(null), 400);
     }
+  };
+
+  const handleOpenFolder = () => {
+    if (!socket) {
+      console.error('[FileTree] Socket not connected');
+      return;
+    }
+    console.log('[FileTree] Emitting fs:pick_folder to open folder picker');
+    socket.emit('fs:pick_folder', {}, (response) => {
+      if (response?.success) {
+        console.log(`[FileTree] Folder opened successfully: ${response.newRoot}`);
+      } else if (!response?.canceled) {
+        console.error('[FileTree] Failed to open folder:', response?.error);
+      }
+    });
   };
 
   return (
@@ -263,18 +275,7 @@ export default function FileTree() {
               You have not yet opened a folder.
             </p>
             <button
-              onClick={() => {
-                if (supportsDirectoryPicker) {
-                  openDirectoryViaFSA().catch((error) =>
-                    console.error('[FileTree] Open folder failed:', error)
-                  );
-                  return;
-                }
-
-                openFilesViaInput({ directory: true }).catch((error) =>
-                  console.error('[FileTree] Open folder import failed:', error)
-                );
-              }}
+              onClick={handleOpenFolder}
               style={{
                 background: '#0e639c',
                 color: '#ffffff',

@@ -12,10 +12,8 @@ import { useEditorStore } from '../../stores/editorStore.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { useWorkspaceAccessStore } from '../../stores/workspaceAccessStore.js';
 import {
-  openDirectoryViaFSA,
   openFilesViaFSA,
   openFilesViaInput,
-  supportsDirectoryPicker,
   supportsFileSystemAccess,
 } from '../../services/localFileService.js';
 import { fileSystemAPI } from '../../services/fileSystemAPI.js';
@@ -105,14 +103,18 @@ export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false, 
   }, [recoveredFromIDB]);
 
   const openFolder = () => {
-    if (supportsDirectoryPicker) {
-      openDirectoryViaFSA().catch((error) => console.error('[Topbar] Open folder failed:', error));
+    if (!socket) {
+      console.error('[Topbar] Socket not connected');
       return;
     }
-
-    openFilesViaInput({ directory: true }).catch((error) =>
-      console.error('[Topbar] Open folder import failed:', error)
-    );
+    console.log('[Topbar] Emitting fs:pick_folder to open folder picker');
+    socket.emit('fs:pick_folder', {}, (response) => {
+      if (response?.success) {
+        console.log(`[Topbar] Folder opened successfully: ${response.newRoot}`);
+      } else if (!response?.canceled) {
+        console.error('[Topbar] Failed to open folder:', response?.error);
+      }
+    });
   };
 
   const openFiles = () => {

@@ -5,15 +5,12 @@
  * Provides: Open Folder, New File, New Folder, Refresh.
  */
 import React, { useState, useRef, useEffect } from 'react';
-import {
-  openDirectoryViaFSA,
-  openFilesViaInput,
-  supportsDirectoryPicker,
-} from '../../services/localFileService.js';
+import { useAgentStore } from '../../stores/agentStore.js';
 
 export default function ExplorerMenu({ onNewFile, onNewFolder }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef(null);
+  const socket = useAgentStore((state) => state.socket);
 
   useEffect(() => {
     if (!open) return;
@@ -24,21 +21,25 @@ export default function ExplorerMenu({ onNewFile, onNewFolder }) {
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
+  const handleOpenFolder = () => {
+    if (!socket) {
+      console.error('[ExplorerMenu] Socket not connected');
+      return;
+    }
+    console.log('[ExplorerMenu] Emitting fs:pick_folder to open folder picker');
+    socket.emit('fs:pick_folder', {}, (response) => {
+      if (response?.success) {
+        console.log(`[ExplorerMenu] Folder opened successfully: ${response.newRoot}`);
+      } else if (!response?.canceled) {
+        console.error('[ExplorerMenu] Failed to open folder:', response?.error);
+      }
+    });
+  };
+
   const items = [
     {
       label: 'Open Folder...',
-      action: () => {
-        if (supportsDirectoryPicker) {
-          openDirectoryViaFSA().catch((error) =>
-            console.error('[ExplorerMenu] Open folder failed:', error)
-          );
-          return;
-        }
-
-        openFilesViaInput({ directory: true }).catch((error) =>
-          console.error('[ExplorerMenu] Open folder import failed:', error)
-        );
-      },
+      action: handleOpenFolder,
     },
     { label: 'New File', action: onNewFile },
     { label: 'New Folder', action: onNewFolder },

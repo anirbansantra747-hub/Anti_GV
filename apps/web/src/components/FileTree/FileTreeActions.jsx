@@ -11,13 +11,12 @@ import {
 } from 'lucide-react';
 import {
   supportsFileSystemAccess,
-  supportsDirectoryPicker,
   openFilesViaFSA,
-  openDirectoryViaFSA,
   openFilesViaInput,
 } from '../../services/localFileService.js';
 import { fileSystemAPI } from '../../services/fileSystemAPI.js';
 import { useFileSystemStore } from '../../stores/fileSystemStore.js';
+import { useAgentStore } from '../../stores/agentStore.js';
 
 // Helper: given a path and the treeData, determine if the path points to a dir
 function isDirectory(path, treeData) {
@@ -199,6 +198,7 @@ export default function FileTreeActions({ selectedPath }) {
   const [mode, setMode] = useState(null); // 'file' | 'folder' | null
   const [progress, setProgress] = useState(null); // { done, total, current }
   const treeData = useFileSystemStore((s) => s.treeData);
+  const socket = useAgentStore((s) => s.socket);
 
   // If selected is a directory → create inside it. If a file → create in its parent.
   const parentDir = selectedPath
@@ -242,19 +242,21 @@ export default function FileTreeActions({ selectedPath }) {
     }
   };
 
-  const handleOpenFolder = async () => {
-    setProgress({ done: 0, total: 1, current: '…' });
-    try {
-      if (supportsDirectoryPicker) {
-        await openDirectoryViaFSA((p) => setProgress(p));
-      } else {
-        await openFilesViaInput({ multiple: true, directory: true }, (p) => setProgress(p));
-      }
-    } catch (err) {
-      if (err?.name !== 'AbortError') console.error('[FileTreeActions] Open folder failed:', err);
-    } finally {
-      setProgress(null);
+  const handleOpenFolder = () => {
+    if (!socket) {
+      console.error('[FileTreeActions] Socket not connected');
+      return;
     }
+    setProgress({ done: 0, total: 1, current: '…' });
+    console.log('[FileTreeActions] Emitting fs:pick_folder to open folder picker');
+    socket.emit('fs:pick_folder', {}, (response) => {
+      if (response?.success) {
+        console.log(`[FileTreeActions] Folder opened successfully: ${response.newRoot}`);
+      } else if (!response?.canceled) {
+        console.error('[FileTreeActions] Failed to open folder:', response?.error);
+      }
+      setProgress(null);
+    });
   };
 
   return (

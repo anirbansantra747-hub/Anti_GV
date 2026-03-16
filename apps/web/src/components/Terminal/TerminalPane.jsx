@@ -63,6 +63,7 @@ export default function TerminalPane() {
   const xtermRef = useRef(null);
   const fitAddonRef = useRef(null);
   const containerRef = useRef(null);
+  const disposablesRef = useRef(null); // Track all disposables for cleanup
   const socket = useAgentStore((state) => state.socket);
   const activeFile = useEditorStore((state) => state.activeFile);
 
@@ -119,8 +120,18 @@ export default function TerminalPane() {
     fitAddonRef.current = fitAddon;
 
     socket.emit('terminal:spawn', { cols: term.cols, rows: term.rows }, (response) => {
-      if (response?.success) setIsSpawned(true);
-      else term.write(`\r\n\x1b[31mFailed to spawn terminal: ${response?.error}\x1b[0m\r\n`);
+      if (response?.success) {
+        setIsSpawned(true);
+        // If we got a workspace path, use it to change directory
+        if (response?.workspacePath) {
+          console.log(`[TerminalPane] Terminal spawned in: ${response.workspacePath}`);
+          // Send cd command to change to the workspace directory
+          const cdCommand = `cd "${response.workspacePath}"\r`;
+          socket.emit('terminal:input', { input: cdCommand });
+        }
+      } else {
+        term.write(`\r\n\x1b[31mFailed to spawn terminal: ${response?.error}\x1b[0m\r\n`);
+      }
     });
 
     const onDataDisposable = term.onData((data) => socket.emit('terminal:input', { input: data }));
@@ -131,6 +142,9 @@ export default function TerminalPane() {
       contextService.appendTerminalOutput(payload.data);
     };
     socket.on('terminal:output', onOutput);
+
+    // Store disposables for cleanup
+    disposablesRef.current = { onDataDisposable, onOutput, term };
 
     const handleResize = () => {
       requestAnimationFrame(() => {
@@ -147,9 +161,107 @@ export default function TerminalPane() {
       ro.observe(terminalRef.current.parentElement || terminalRef.current);
     }
 
+    // Listen for workspace changes and respawn terminal
+    const onWorkspaceChanged = (payload) => {
+      console.log(
+        `[TerminalPane] Workspace changed to: ${payload?.newRoot}. Respawning terminal...`
+      );
+      // Clean up old terminal resources
+      if (disposablesRef.current) {
+        disposablesRef.current.onDataDisposable?.dispose();
+        socket.off('terminal:output', disposablesRef.current.onOutput);
+        disposablesRef.current.term?.dispose();
+      }
+      xtermRef.current = null;
+      fitAddonRef.current = null;
+      setIsSpawned(false);
+
+      // Let the DOM settle, then respawn
+      setTimeout(() => {
+        if (terminalRef.current) {
+          const newTerm = new Terminal({
+            cursorBlink: true,
+            fontSize: 13,
+            fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
+            lineHeight: 1.5,
+            letterSpacing: 0.5,
+            theme: {
+              background: '#0d0f14',
+              foreground: 'oklch(90% 0.01 250)',
+              cursor: 'oklch(65% 0.18 35)',
+              cursorAccent: '#0d0f14',
+              selectionBackground: 'oklch(30% 0.01 250)',
+              black: '#1e2030',
+              brightBlack: '#444b6a',
+              red: '#ff5555',
+              brightRed: '#ff6e6e',
+              green: '#50fa7b',
+              brightGreen: '#69ff94',
+              yellow: '#f1fa8c',
+              brightYellow: '#ffffa5',
+              blue: '#bd93f9',
+              brightBlue: '#d6acff',
+              magenta: '#ff79c6',
+              brightMagenta: '#ff92df',
+              cyan: '#8be9fd',
+              brightCyan: '#a4ffff',
+              white: '#f8f8f2',
+              brightWhite: '#ffffff',
+            },
+          });
+
+          const newFitAddon = new FitAddon();
+          newTerm.loadAddon(newFitAddon);
+          newTerm.open(terminalRef.current);
+          requestAnimationFrame(() => newFitAddon.fit());
+
+          xtermRef.current = newTerm;
+          fitAddonRef.current = newFitAddon;
+
+          socket.emit('terminal:spawn', { cols: newTerm.cols, rows: newTerm.rows }, (response) => {
+            if (response?.success) {
+              setIsSpawned(true);
+              console.log(
+                `[TerminalPane] Terminal respawned successfully in: ${response?.workspacePath}`
+              );
+              // CD to the workspace directory after respawning
+              if (response?.workspacePath) {
+                const cdCommand = `cd "${response.workspacePath}"\r`;
+                socket.emit('terminal:input', { input: cdCommand });
+              }
+            } else {
+              newTerm.write(`\r\n\x1b[31mFailed to spawn terminal: ${response?.error}\x1b[0m\r\n`);
+            }
+          });
+
+          const newDataDisposable = newTerm.onData((data) =>
+            socket.emit('terminal:input', { input: data })
+          );
+
+          const newOnOutput = (payload) => {
+            newTerm.write(payload.data);
+            contextService.appendTerminalOutput(payload.data);
+          };
+          socket.on('terminal:output', newOnOutput);
+
+          // Store new disposables for cleanup
+          disposablesRef.current = {
+            onDataDisposable: newDataDisposable,
+            onOutput: newOnOutput,
+            term: newTerm,
+          };
+        }
+      }, 200);
+    };
+    socket.on('fs:workspace_changed', onWorkspaceChanged);
+
     return () => {
-      onDataDisposable.dispose();
-      socket.off('terminal:output', onOutput);
+      if (disposablesRef.current) {
+        disposablesRef.current.onDataDisposable?.dispose();
+        socket.off('terminal:output', disposablesRef.current.onOutput);
+        disposablesRef.current.term?.dispose();
+      }
+      socket.off('fs:workspace_changed', onWorkspaceChanged);
       window.removeEventListener('resize', handleResize);
       ro?.disconnect();
       term.dispose();

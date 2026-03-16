@@ -3,7 +3,7 @@ import { getWorkspaceState, setWorkspaceState } from '../services/fs/workspaceSt
 import { ensureChat, addMessage, getChat } from '../services/db/chatService.js';
 import { runVerification } from '../services/verification/verificationRunner.js';
 import { ensureWorkspaceForCurrentRoot } from '../services/db/workspaceService.js';
-import { startBackgroundIndex } from '../services/rag/backgroundIndexer.js';
+import { startBackgroundIndex, stopBackgroundIndex } from '../services/rag/backgroundIndexer.js';
 
 /**
  * Per-socket approval gate.
@@ -12,6 +12,13 @@ import { startBackgroundIndex } from '../services/rag/backgroundIndexer.js';
  * `agent:approve` or `agent:reject`.
  */
 const pendingApprovals = new Map(); // socketId → { resolve }
+
+/**
+ * Per-socket pipeline cancellation.
+ * When `agent:terminate` is received, we call cancelFn() which sets
+ * a flag that the running pipeline checks at each phase boundary.
+ */
+const pendingPipelines = new Map(); // socketId → { cancel: () => void }
 
 export const setupAgentSocket = (io, socket) => {
   /**
@@ -35,9 +42,6 @@ export const setupAgentSocket = (io, socket) => {
         setWorkspaceState({ workspaceId, rootPath: ws.rootPath });
       }
     }
-    if (workspaceId) {
-      startBackgroundIndex(workspaceId, { onProgress: (msg) => console.log(msg) });
-    }
     const chat = workspaceId ? await ensureChat(workspaceId, incomingChatId) : null;
     const chatId = chat?.chatId;
 
@@ -48,20 +52,63 @@ export const setupAgentSocket = (io, socket) => {
 
     const chatState = workspaceId && chatId ? await getChat(workspaceId, chatId) : null;
 
-    // Call the main orchestrator timeline, passing the approval gate
-    await runAgentPipeline({
-      prompt,
-      frontendContext: context || {},
-      serverContext: {
-        terminalOutput: null,
-        summary: chatState?.summary || '',
-        chatMessages: chatState?.messages || [],
+    // Register a cancellation token for this pipeline run
+    let cancelled = false;
+    pendingPipelines.set(socket.id, {
+      cancel: () => {
+        cancelled = true;
       },
-      socket,
-      waitForApproval: () => waitForApproval(socket),
-      chatId,
-      workspaceId,
     });
+
+    // Pause background indexer while pipeline runs
+    if (workspaceId) stopBackgroundIndex(workspaceId);
+
+    try {
+      await runAgentPipeline({
+        prompt,
+        frontendContext: context || {},
+        serverContext: {
+          terminalOutput: null,
+          summary: chatState?.summary || '',
+          chatMessages: chatState?.messages || [],
+        },
+        socket,
+        waitForApproval: () => waitForApproval(socket),
+        chatId,
+        workspaceId,
+        isCancelled: () => cancelled,
+      });
+    } finally {
+      pendingPipelines.delete(socket.id);
+      // Resume background indexer after pipeline finishes (or errors)
+      if (workspaceId) startBackgroundIndex(workspaceId, { onProgress: (msg) => console.log(msg) });
+    }
+  });
+
+  /**
+   * Terminate the running pipeline immediately.
+   * Cancels any in-progress LLM calls at the next check point and
+   * also resolves any pending approval gate.
+   */
+  socket.on('agent:terminate', () => {
+    console.log(`[socket] agent:terminate received from ${socket.id}`);
+
+    // Cancel the running pipeline
+    const pipeline = pendingPipelines.get(socket.id);
+    if (pipeline) {
+      pipeline.cancel();
+      pendingPipelines.delete(socket.id);
+      console.log(`[socket] 🛑 Pipeline cancellation triggered`);
+    }
+
+    // Also unblock any pending approval gate
+    const pending = pendingApprovals.get(socket.id);
+    if (pending) {
+      pending.resolve({ approved: false });
+      pendingApprovals.delete(socket.id);
+    }
+
+    socket.emit('agent:done', { message: 'Terminated by user.' });
   });
 
   /**
@@ -93,7 +140,7 @@ export const setupAgentSocket = (io, socket) => {
   });
 
   /**
-   * Listen for user cancelling an operation
+   * Listen for user cancelling (legacy — kept for compatibility)
    */
   socket.on('agent:cancel', () => {
     console.log(`[socket] agent:cancel received from ${socket.id}`);
@@ -115,6 +162,12 @@ export const setupAgentSocket = (io, socket) => {
    * Clean up on disconnect
    */
   socket.on('disconnect', () => {
+    const pipeline = pendingPipelines.get(socket.id);
+    if (pipeline) {
+      pipeline.cancel();
+      pendingPipelines.delete(socket.id);
+    }
+
     const pending = pendingApprovals.get(socket.id);
     if (pending) {
       pending.resolve({ approved: false });
@@ -127,8 +180,6 @@ export const setupAgentSocket = (io, socket) => {
 /**
  * Returns a Promise that pauses the pipeline until the user
  * emits `agent:approve` or `agent:reject`.
- * @param {import('socket.io').Socket} socket
- * @returns {Promise<{ approved: boolean }>}
  */
 function waitForApproval(socket) {
   return new Promise((resolve) => {

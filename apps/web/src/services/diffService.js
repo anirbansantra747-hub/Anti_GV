@@ -126,6 +126,10 @@ class DiffService {
         lines = [];
       }
     }
+    // If memfs has a stub (empty blob) and the server sent the actual disk content, use it
+    if (lines.join('').length === 0 && patch._baseContent) {
+      lines = patch._baseContent.split('\n');
+    }
 
     // Apply each operation in order
     for (const op of patch.operations) {
@@ -144,14 +148,28 @@ class DiffService {
 
           let found = false;
           for (let i = 0; i <= lines.length - searchLines.length; i++) {
-            let match = true;
+            // Pass 1: exact match
+            let exact = true;
             for (let j = 0; j < searchLines.length; j++) {
               if (lines[i + j] !== searchLines[j]) {
-                match = false;
+                exact = false;
                 break;
               }
             }
-            if (match) {
+            if (exact) {
+              lines.splice(i, searchLines.length, ...contentLines);
+              found = true;
+              break;
+            }
+            // Pass 2: trimmed match — handles LLM whitespace inconsistencies
+            let trimmed = true;
+            for (let j = 0; j < searchLines.length; j++) {
+              if ((lines[i + j] ?? '').trim() !== searchLines[j].trim()) {
+                trimmed = false;
+                break;
+              }
+            }
+            if (trimmed) {
               lines.splice(i, searchLines.length, ...contentLines);
               found = true;
               break;
@@ -159,7 +177,10 @@ class DiffService {
           }
 
           if (!found) {
-            console.error('[DiffService] Shadow tree failed to find search block:', op.search);
+            console.warn(
+              '[DiffService] Search block not found (exact or trimmed):',
+              op.search?.slice(0, 80)
+            );
           }
         } else {
           // Legacy line-based replace

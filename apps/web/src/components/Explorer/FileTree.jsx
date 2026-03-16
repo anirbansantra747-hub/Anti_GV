@@ -3,11 +3,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAgentStore } from '../../stores/agentStore';
 import { useFileSystemStore } from '../../stores/fileSystemStore';
 import TreeNode from './TreeNode';
-import {
-  openDirectoryViaFSA,
-  openFilesViaInput,
-  supportsDirectoryPicker,
-} from '../../services/localFileService.js';
 
 export default function FileTree() {
   const socket = useAgentStore((state) => state.socket);
@@ -29,6 +24,21 @@ export default function FileTree() {
       </div>
     );
   }
+
+  const handleOpenFolder = () => {
+    if (!socket) {
+      console.error('[Explorer FileTree] Socket not connected');
+      return;
+    }
+    console.log('[Explorer FileTree] Emitting fs:pick_folder to open folder picker');
+    socket.emit('fs:pick_folder', {}, (response) => {
+      if (response?.success) {
+        console.log(`[Explorer FileTree] Folder opened successfully: ${response.newRoot}`);
+      } else if (!response?.canceled) {
+        console.error('[Explorer FileTree] Failed to open folder:', response?.error);
+      }
+    });
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -54,17 +64,7 @@ export default function FileTree() {
           Explorer
         </span>
         <button
-          onClick={() => {
-            if (supportsDirectoryPicker) {
-              openDirectoryViaFSA().catch((err) =>
-                console.error('[FileTree] Open Folder Error:', err)
-              );
-            } else {
-              openFilesViaInput({ directory: true }).catch((err) =>
-                console.error('[FileTree] Open Folder Error:', err)
-              );
-            }
-          }}
+          onClick={handleOpenFolder}
           title="Open Folder from PC"
           style={{
             background: 'transparent',

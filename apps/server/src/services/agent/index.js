@@ -9,7 +9,10 @@ import { addMessage } from '../db/chatService.js';
 
 /**
  * Main Agent Orchestrator Pipeline
- * Runs the sequence: Intent -> Context -> Plan -> Code -> Verify
+ * Runs the sequence: Intent -> Context -> Plan -> Approve -> Code -> Verify
+ *
+ * @param {Object} params
+ * @param {() => boolean} params.isCancelled - Returns true when user terminates the pipeline
  */
 export const runAgentPipeline = async ({
   prompt,
@@ -19,6 +22,7 @@ export const runAgentPipeline = async ({
   waitForApproval,
   chatId,
   workspaceId,
+  isCancelled = () => false,
 }) => {
   try {
     console.log(`\n[AgentPipeline] ═══════════════════════════════════════════`);
@@ -35,6 +39,11 @@ export const runAgentPipeline = async ({
       message: `Intent classified as ${intent} (${Math.round(confidence * 100)}% confidence)`,
     });
 
+    if (isCancelled()) {
+      socket.emit('agent:done', { message: 'Terminated.' });
+      return;
+    }
+
     // Handle non-coding intents early
     if (intent === 'ASK') {
       console.log(`[AgentPipeline] Routing to ASK handler (no code changes)`);
@@ -42,7 +51,6 @@ export const runAgentPipeline = async ({
       const fullContext = await assembleContext(frontendContext, serverContext, prompt);
 
       socket.emit('agent:thinking', { message: 'Answering question...' });
-      // Notify UI we are done "thinking" so the raw message can show up
       socket.emit('agent:step:done', { stepId: 'ask-prep' });
 
       const askPrompt = `
@@ -57,7 +65,6 @@ ${prompt}
 `;
 
       const messageId = crypto.randomUUID();
-      // Notify the frontend that a new streaming message is starting
       socket.emit('agent:message:start', { messageId });
 
       const { stream, provider } = await streamResponse(
@@ -65,19 +72,16 @@ ${prompt}
           { role: 'system', content: 'You are a helpful coding assistant.' },
           { role: 'user', content: askPrompt },
         ],
-        {
-          model: 'llama-3.3-70b-versatile', // Force the versatile model for answers
-        }
+        { model: 'llama-3.3-70b-versatile' }
       );
 
-      // Stream the tokens to the frontend
       const answer = await handleStream(stream, socket, provider, {
         eventName: 'agent:message:stream',
         extraPayload: { messageId },
       });
 
       console.log(`[AgentPipeline] ASK response streamed successfully`);
-      socket.emit('agent:done', { messageId, message: '' }); // Send empty message to just resolve the loading state
+      socket.emit('agent:done', { messageId, message: '' });
 
       if (workspaceId && chatId) {
         await addMessage(workspaceId, chatId, 'assistant', answer || '');
@@ -90,6 +94,11 @@ ${prompt}
     socket.emit('agent:thinking', { message: 'Assembling codebase context...' });
     const fullContext = await assembleContext(frontendContext, serverContext, prompt);
     console.log(`[AgentPipeline] P1 Context assembled (${fullContext.length} chars)`);
+
+    if (isCancelled()) {
+      socket.emit('agent:done', { message: 'Terminated.' });
+      return;
+    }
 
     // ── Phase 3: Planning ────────────────────────────────────────────────
     console.log(`[AgentPipeline] P2 Generating execution plan...`);
@@ -109,8 +118,12 @@ ${prompt}
       await addMessage(workspaceId, chatId, 'assistant', `Plan: ${plan.summary || 'No summary'}`);
     }
 
+    if (isCancelled()) {
+      socket.emit('agent:done', { message: 'Terminated.' });
+      return;
+    }
+
     // ── Phase 3.5: APPROVAL GATE ─────────────────────────────────────────
-    // Pipeline PAUSES here until user clicks Approve or Reject.
     if (waitForApproval) {
       console.log(`[AgentPipeline] P3 ⏸️  Waiting for user approval...`);
       socket.emit('agent:thinking', { message: 'Waiting for your approval...' });
@@ -128,13 +141,21 @@ ${prompt}
       console.log(`[AgentPipeline] P3 ⚠️  No approval gate — auto-continuing (dev mode)`);
     }
 
+    if (isCancelled()) {
+      socket.emit('agent:done', { message: 'Terminated.' });
+      return;
+    }
+
     // ── Phase 4+5: Coding + Verification ─────────────────────────────────
-    // The critic+fixer self-healing loop runs INSIDE generateCodeEdits()
-    // for each step. See coderAgent.js for the verify/fix retry logic.
     console.log(`[AgentPipeline] P4+P5 Coding + Verification starting...`);
     socket.emit('agent:thinking', { message: 'Applying edits based on plan...' });
 
-    const edits = await generateCodeEdits(plan, fullContext, socket);
+    const edits = await generateCodeEdits(plan, fullContext, socket, isCancelled);
+
+    if (isCancelled()) {
+      socket.emit('agent:done', { message: 'Terminated.' });
+      return;
+    }
 
     console.log(`[AgentPipeline] P4+P5 Complete: ${edits.length} file(s) edited`);
     socket.emit('agent:step:done', { stepId: 'code-generation' });

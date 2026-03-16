@@ -1,12 +1,13 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { getWorkspaceState } from './workspaceState.js';
+import { getWorkspaceState, isWorkspaceReady as isStateReady } from './workspaceState.js';
 
 // Backend workspace management
 let workspaceExplicit = false;
 
 export const getWorkspaceRoot = () => getWorkspaceState().rootPath;
 export const isWorkspaceExplicit = () => workspaceExplicit;
+export const isWorkspaceReady = () => isStateReady();
 
 /**
  * Changes the current backend workspace root directory dynamically.
@@ -108,7 +109,7 @@ export const listDir = async (targetPath, opts = {}) => {
     const entries = await fs.readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
       if (['node_modules', '.git', '.turbo', 'dist', '.cache'].includes(entry.name)) continue;
-      
+
       const full = path.join(dir, entry.name);
       const rel = path.relative(getWorkspaceRoot(), full).replace(/\\/g, '/');
       const isDirectory = entry.isDirectory();

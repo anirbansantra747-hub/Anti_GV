@@ -13,8 +13,6 @@ import * as vectorStore from '../rag/vectorStore.js';
 import { getWorkspaceState } from '../fs/workspaceState.js';
 import { findSymbols, getFileIndexes } from '../db/fileIndexService.js';
 import { getImpactedFiles } from '../rag/dependencyGraph.js';
-import { buildCandidateFiles } from '../rag/candidateBuilder.js';
-import { ensureEmbeddingsForFiles } from '../rag/indexer.js';
 import { touchChunkIds } from '../db/chunkMetaService.js';
 
 let lastRagWarnAt = 0;
@@ -39,16 +37,8 @@ export const assembleContext = async (frontendContext, serverContext = {}, userP
       if (!embeddingOk) {
         throw new Error('Embedding server unavailable');
       }
-      const candidateFiles = await buildCandidateFiles({
-        workspaceId,
-        prompt: userPrompt,
-        activeFile: frontendContext?.activeFile,
-        openTabs: frontendContext?.openTabs || [],
-      });
-      if (candidateFiles.length > 0) {
-        await ensureEmbeddingsForFiles(candidateFiles, { workspaceId });
-      }
-
+      // Do NOT embed on-demand here — the background indexer handles that in a
+      // separate child process. Just query what is already in the vector store.
       const ragChunks = await retrieveRelevantChunks(userPrompt, workspaceId);
       if (ragChunks.length > 0) {
         finalContext += '## Relevant Code (Semantic Search)\n\n';

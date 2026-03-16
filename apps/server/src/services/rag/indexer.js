@@ -107,6 +107,7 @@ export async function indexProject(projectRoot, options = {}) {
  * Re-index a single file on write.
  */
 export async function reindexFile(absPath, onProgress = console.log, workspaceId = 'default') {
+  if (!(await isEmbeddingAvailable())) return;
   const root = getWorkspaceRoot();
   const relPath = '/' + path.relative(root, absPath).replace(/\\/g, '/');
   await embedSingleFile(root, relPath, { workspaceId, onProgress, force: true });
@@ -130,11 +131,6 @@ export async function removeFileIndex(filePath, workspaceId = 'default') {
 
 async function embedSingleFile(root, relPath, options) {
   const { workspaceId, onProgress, force } = options;
-  const embeddingOk = await isEmbeddingAvailable();
-  if (!embeddingOk) {
-    onProgress(`[Indexer] Embedding unavailable - skip ${relPath}`);
-    return;
-  }
   const absPath = path.resolve(root, relPath.replace(/^\/+/, ''));
 
   if (shouldSkip(relPath)) return;

@@ -13,7 +13,7 @@ export async function buildCandidateFiles({
   prompt,
   activeFile,
   openTabs = [],
-  limit = 20,
+  limit = 10,
 }) {
   const candidates = new Set();
 

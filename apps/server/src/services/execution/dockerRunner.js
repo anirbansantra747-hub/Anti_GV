@@ -37,8 +37,14 @@ export const RUNNER_CONFIG = {
   // ── JVM ──────────────────────────────────────────────────────────────────
   java: {
     image: img('DOCKER_JAVA_IMAGE', 'antigv-java-runner:latest'),
-    filename: 'Main.java',
-    cmd: 'javac /sandbox/Main.java -d /tmp 2>&1 >&2 && java -cp /tmp Main',
+    filename: (code) => {
+      const match = code.match(/public\s+class\s+([A-Za-z0-9_$]+)/);
+      return match ? `${match[1]}.java` : 'Main.java';
+    },
+    cmd: (filename) => {
+      const className = filename.replace('.java', '');
+      return `javac /sandbox/${filename} -d /tmp 2>&1 >&2 && java -cp /tmp ${className}`;
+    },
   },
   kt: {
     image: img('DOCKER_KOTLIN_IMAGE', 'antigv-kotlin-runner:latest'),
@@ -289,9 +295,12 @@ export async function runInDocker(ext, code, stdin = '', timeoutMs = TIMEOUT_MS)
   const image = cfg.image();
   const start = Date.now();
 
-  const result = await _withSandbox([{ name: cfg.filename, content: code }], async (tempDir) => {
+  const filename = typeof cfg.filename === 'function' ? cfg.filename(code) : cfg.filename;
+  const cmd = typeof cfg.cmd === 'function' ? cfg.cmd(filename) : cfg.cmd;
+
+  const result = await _withSandbox([{ name: filename, content: code }], async (tempDir) => {
     const mountPath = _toMountPath(tempDir);
-    const args = [..._dockerArgs(image, mountPath), cfg.cmd];
+    const args = [..._dockerArgs(image, mountPath), cmd];
     return _spawnWithTimeout('docker', args, stdin, timeoutMs);
   });
 

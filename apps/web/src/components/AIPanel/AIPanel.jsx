@@ -5,7 +5,7 @@
  */
 
 import React, { useEffect, useState, useRef } from 'react';
-import { Send, Cpu, Check, X, Orbit, Eye } from 'lucide-react';
+import { Send, Cpu, Check, X, Orbit, Eye, Square } from 'lucide-react';
 import { useAgentStore } from '../../stores/agentStore';
 import { useEditorStore } from '../../stores/editorStore.js';
 import { useWorkspaceAccessStore } from '../../stores/workspaceAccessStore.js';
@@ -22,6 +22,7 @@ export default function AIPanel() {
     isThinking,
     thinkingMessage,
     sendPrompt,
+    terminate,
     activeTransactionId,
     activeTransactionFiles,
     approveTransaction,
@@ -541,14 +542,39 @@ export default function AIPanel() {
               background: 'rgba(255,255,255,0.03)',
               padding: '8px 12px',
               border: '1px solid var(--panel-border)',
+              width: '100%',
+              boxSizing: 'border-box',
+              justifyContent: 'space-between',
             }}
           >
-            <Orbit
-              size={14}
-              color="var(--accent)"
-              style={{ animation: 'panelSpin 2s linear infinite' }}
-            />
-            {thinkingMessage || 'Thinking...'}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Orbit
+                size={14}
+                color="var(--accent)"
+                style={{ animation: 'panelSpin 2s linear infinite', flexShrink: 0 }}
+              />
+              <span>{thinkingMessage || 'Thinking...'}</span>
+            </div>
+            <button
+              onClick={terminate}
+              title="Terminate pipeline"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                background: 'rgba(239,68,68,0.15)',
+                border: '1px solid rgba(239,68,68,0.4)',
+                color: '#f87171',
+                padding: '3px 8px',
+                cursor: 'pointer',
+                fontSize: 11,
+                fontWeight: 600,
+                flexShrink: 0,
+              }}
+            >
+              <Square size={10} fill="#f87171" strokeWidth={0} />
+              Stop
+            </button>
           </div>
         )}
 
