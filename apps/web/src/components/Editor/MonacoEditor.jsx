@@ -15,9 +15,9 @@ import { bus, Events } from '../../services/eventBus.js';
 import { getLanguageFromExtension } from '@antigv/shared';
 import LargeFileView from './LargeFileView.jsx';
 import {
-  openDirectoryViaFSA,
   openFilesViaInput,
   supportsDirectoryPicker,
+  openWorkspaceFolder,
 } from '../../services/localFileService.js';
 import { workspaceAccessService } from '../../services/workspaceAccessService.js';
 import InlineDiffReview from './InlineDiffReview.jsx';
@@ -261,7 +261,6 @@ export default function MonacoEditor({ onContentLoad, onCursorPositionChange }) 
           line: pos.lineNumber,
           column: pos.column,
           selected,
-
         });
       });
 
@@ -324,15 +323,8 @@ export default function MonacoEditor({ onContentLoad, onCursorPositionChange }) 
               <button
                 className="brutalist-button"
                 onClick={() => {
-                  if (supportsDirectoryPicker) {
-                    openDirectoryViaFSA().catch((error) =>
-                      console.error('[MonacoEditor] Open folder failed:', error)
-                    );
-                    return;
-                  }
-
-                  openFilesViaInput({ directory: true }).catch((error) =>
-                    console.error('[MonacoEditor] Open folder import failed:', error)
+                  openWorkspaceFolder().catch((error) =>
+                    console.error('[MonacoEditor] Open folder failed:', error)
                   );
                 }}
               >

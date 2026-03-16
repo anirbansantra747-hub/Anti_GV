@@ -213,12 +213,17 @@ export const setupFsSocket = (io, socket) => {
       const verifiedPath = await changeWorkspace(newPath);
       console.log(`[FsSocket] Workspace pivoting to: ${verifiedPath}`);
 
+      // We explicitly update the memory state here so that if Mongo is disabled, the IDE still works!
+      setWorkspaceState({ rootPath: verifiedPath });
+
       // 2.1 Ensure a workspace record exists in Mongo
       let workspaceId = null;
       const ws = await ensureWorkspaceForRoot(verifiedPath);
       if (ws?._id) {
         workspaceId = ws._id.toString();
         setWorkspaceState({ workspaceId, rootPath: verifiedPath });
+      } else {
+        setWorkspaceState({ workspaceId: null, rootPath: verifiedPath });
       }
 
       if (workspaceId) {

@@ -10,16 +10,16 @@
  *  - File tree with react-arborist when files exist
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Tree } from 'react-arborist';
 import { Search, X } from 'lucide-react';
 import { useFileSystemStore } from '../../stores/fileSystemStore.js';
 import { useEditorStore } from '../../stores/editorStore.js';
 import {
   handleDrop,
-  openDirectoryViaFSA,
   openFilesViaInput,
   supportsDirectoryPicker,
+  openWorkspaceFolder,
 } from '../../services/localFileService.js';
 import FileNode from './FileNode.jsx';
 import FileTreeActions from './FileTreeActions.jsx';
@@ -46,6 +46,20 @@ export default function FileTree() {
 
   const rootChildren = treeData?.[0]?.children ?? [];
   const hasFiles = rootChildren.length > 0;
+
+  const containerRef = useRef(null);
+  const [treeHeight, setTreeHeight] = useState(300);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setTreeHeight(entry.contentRect.height);
+      }
+    });
+    ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, [hasFiles]);
 
   // Filter tree nodes by search query
   const arboristData = useMemo(() => {
@@ -245,7 +259,7 @@ export default function FileTree() {
       )}
 
       {/* ── Main Content Area ───────────────────────────────────────────── */}
-      <div style={{ flex: 1, overflow: 'auto', paddingTop: 4 }}>
+      <div ref={containerRef} style={{ flex: 1, overflow: 'hidden', paddingTop: 4 }}>
         {!hasFiles ? (
           /* Empty state — no folder opened yet */
           <div
@@ -256,6 +270,8 @@ export default function FileTree() {
               flexDirection: 'column',
               alignItems: 'center',
               gap: 16,
+              overflowY: 'auto',
+              height: '100%',
             }}
           >
             <div style={{ fontSize: 48, opacity: 0.6 }}>📂</div>
@@ -264,15 +280,8 @@ export default function FileTree() {
             </p>
             <button
               onClick={() => {
-                if (supportsDirectoryPicker) {
-                  openDirectoryViaFSA().catch((error) =>
-                    console.error('[FileTree] Open folder failed:', error)
-                  );
-                  return;
-                }
-
-                openFilesViaInput({ directory: true }).catch((error) =>
-                  console.error('[FileTree] Open folder import failed:', error)
+                openWorkspaceFolder().catch((error) =>
+                  console.error('[FileTree] Open folder failed:', error)
                 );
               }}
               style={{
@@ -305,6 +314,7 @@ export default function FileTree() {
             onSelect={handleSelect}
             openByDefault={!!searchQuery}
             width="100%"
+            height={treeHeight}
             indent={16}
             rowHeight={28}
             overscanCount={4}

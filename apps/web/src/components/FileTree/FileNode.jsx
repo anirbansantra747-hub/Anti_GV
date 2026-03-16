@@ -183,7 +183,7 @@ export default function FileNode({ node, style, dragHandle }) {
           display: 'flex',
           alignItems: 'center',
           gap: 6,
-          padding: '2px 8px',
+          padding: `2px 8px 2px ${(node.level || 0) * 12 + 8}px`,
           borderRadius: 4,
           cursor: 'pointer',
           userSelect: 'none',

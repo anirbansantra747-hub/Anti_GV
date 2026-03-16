@@ -13,7 +13,7 @@ import {
   supportsFileSystemAccess,
   supportsDirectoryPicker,
   openFilesViaFSA,
-  openDirectoryViaFSA,
+  openWorkspaceFolder,
   openFilesViaInput,
 } from '../../services/localFileService.js';
 import { fileSystemAPI } from '../../services/fileSystemAPI.js';
@@ -245,11 +245,7 @@ export default function FileTreeActions({ selectedPath }) {
   const handleOpenFolder = async () => {
     setProgress({ done: 0, total: 1, current: '…' });
     try {
-      if (supportsDirectoryPicker) {
-        await openDirectoryViaFSA((p) => setProgress(p));
-      } else {
-        await openFilesViaInput({ multiple: true, directory: true }, (p) => setProgress(p));
-      }
+      await openWorkspaceFolder((p) => setProgress(p));
     } catch (err) {
       if (err?.name !== 'AbortError') console.error('[FileTreeActions] Open folder failed:', err);
     } finally {

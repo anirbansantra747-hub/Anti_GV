@@ -72,8 +72,23 @@ export default function TerminalPane() {
   const [isRunning, setIsRunning] = useState(false);
   const [problems, setProblems] = useState([]);
   const [stdin, setStdin] = useState('');
+  const [shellType, setShellType] = useState('powershell');
 
   // ─── xterm.js setup ────────────────────────────────────────────────────────
+  const launchTerminal = useCallback(
+    (term, fitAddon, type) => {
+      socket.emit(
+        'terminal:spawn',
+        { cols: term.cols, rows: term.rows, shell: type },
+        (response) => {
+          if (response?.success) setIsSpawned(true);
+          else term.write(`\r\n\x1b[31mFailed to spawn terminal: ${response?.error}\x1b[0m\r\n`);
+        }
+      );
+    },
+    [socket]
+  );
+
   useEffect(() => {
     if (!terminalRef.current || !socket) return;
 
@@ -118,10 +133,7 @@ export default function TerminalPane() {
     xtermRef.current = term;
     fitAddonRef.current = fitAddon;
 
-    socket.emit('terminal:spawn', { cols: term.cols, rows: term.rows }, (response) => {
-      if (response?.success) setIsSpawned(true);
-      else term.write(`\r\n\x1b[31mFailed to spawn terminal: ${response?.error}\x1b[0m\r\n`);
-    });
+    launchTerminal(term, fitAddon, shellType);
 
     const onDataDisposable = term.onData((data) => socket.emit('terminal:input', { input: data }));
 
@@ -155,6 +167,16 @@ export default function TerminalPane() {
       term.dispose();
     };
   }, [socket]);
+
+  // ─── Shell Re-spawn ───────────────────────────────────────────────────────
+  const handleShellChange = (newShell) => {
+    setShellType(newShell);
+    if (xtermRef.current) {
+      xtermRef.current.clear();
+      xtermRef.current.write('\r\n\x1b[33mRestarting terminal...\x1b[0m\r\n');
+      launchTerminal(xtermRef.current, fitAddonRef.current, newShell);
+    }
+  };
 
   // ─── Piston socket output + problems listeners ──────────────────────────────
   useEffect(() => {
@@ -280,6 +302,29 @@ export default function TerminalPane() {
 
         {/* Spacer */}
         <div style={{ flex: 1 }} />
+
+        {/* Shell Selector */}
+        <select
+          value={shellType}
+          onChange={(e) => handleShellChange(e.target.value)}
+          style={{
+            background: 'var(--app-bg)',
+            color: 'var(--text-secondary)',
+            border: '1px solid var(--panel-border)',
+            borderRadius: 0,
+            padding: '2px 8px',
+            fontSize: 10,
+            fontFamily: 'var(--font-ui)',
+            fontWeight: 700,
+            margin: '6px 8px',
+            outline: 'none',
+            cursor: 'pointer',
+          }}
+        >
+          <option value="powershell">POWERSHELL</option>
+          <option value="bash">BASH (WSL)</option>
+          <option value="git-bash">GIT BASH</option>
+        </select>
 
         {/* Run Button */}
         <button

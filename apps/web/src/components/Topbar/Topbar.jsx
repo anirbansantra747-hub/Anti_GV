@@ -12,11 +12,10 @@ import { useEditorStore } from '../../stores/editorStore.js';
 import { useSessionStore } from '../../stores/sessionStore.js';
 import { useWorkspaceAccessStore } from '../../stores/workspaceAccessStore.js';
 import {
-  openDirectoryViaFSA,
-  openFilesViaFSA,
   openFilesViaInput,
   supportsDirectoryPicker,
   supportsFileSystemAccess,
+  openWorkspaceFolder,
 } from '../../services/localFileService.js';
 import { fileSystemAPI } from '../../services/fileSystemAPI.js';
 import { workspaceAccessService } from '../../services/workspaceAccessService.js';
@@ -105,14 +104,7 @@ export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false, 
   }, [recoveredFromIDB]);
 
   const openFolder = () => {
-    if (supportsDirectoryPicker) {
-      openDirectoryViaFSA().catch((error) => console.error('[Topbar] Open folder failed:', error));
-      return;
-    }
-
-    openFilesViaInput({ directory: true }).catch((error) =>
-      console.error('[Topbar] Open folder import failed:', error)
-    );
+    openWorkspaceFolder().catch((error) => console.error('[Topbar] Open folder failed:', error));
   };
 
   const openFiles = () => {

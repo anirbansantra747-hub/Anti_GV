@@ -11,6 +11,8 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 export const useAgentStore = create((set, get) => {
   let socket = null;
+  let workspaceChangeJob = null;
+  let workspaceChangeRoot = null;
   const normalizePath = (rawPath) => {
     let path = (rawPath || '').replace(/\\/g, '/').trim();
     if (!path) return '/';
@@ -26,6 +28,57 @@ export const useAgentStore = create((set, get) => {
     return path;
   };
 
+  const applyWorkspaceChange = async (payload = {}) => {
+    const newRoot = payload?.newRoot || '';
+    const workspaceId = payload?.workspaceId ?? null;
+
+    if (!newRoot) return false;
+
+    if (workspaceChangeJob && workspaceChangeRoot === newRoot) {
+      return workspaceChangeJob;
+    }
+
+    workspaceChangeRoot = newRoot;
+    workspaceChangeJob = (async () => {
+      const rootName = newRoot
+        .split(/[/\\]+/)
+        .filter(Boolean)
+        .pop();
+
+      set({ workspaceRootName: rootName || null });
+
+      const { syncRealDiskToMemfs } = await import('../services/initSyncService.js');
+      const { useEditorStore } = await import('./editorStore.js');
+
+      workspaceAccessService.clear({
+        mode: 'backend',
+        label: newRoot,
+        description: 'Saving through the backend workspace root.',
+      });
+      useEditorStore.getState().closeAllTabs();
+      await syncRealDiskToMemfs({ preferIDB: false, reset: true });
+
+      if (socket) {
+        socket.emit('terminal:input', { input: `cd "${newRoot}"\r` });
+      }
+
+      if (workspaceId !== undefined) {
+        await get().loadChats();
+      }
+
+      return true;
+    })();
+
+    try {
+      return await workspaceChangeJob;
+    } finally {
+      if (workspaceChangeRoot === newRoot) {
+        workspaceChangeJob = null;
+        workspaceChangeRoot = null;
+      }
+    }
+  };
+
   return {
     socket: null,
     isConnected: false,
@@ -39,6 +92,7 @@ export const useAgentStore = create((set, get) => {
     activeChatId: null,
     isChatLoading: false,
     workspaceRootName: null,
+    syncWorkspaceFromPayload: applyWorkspaceChange,
 
     connect: () => {
       if (socket) return;
@@ -55,29 +109,7 @@ export const useAgentStore = create((set, get) => {
       socket.on('fs:workspace_changed', async (payload) => {
         console.log(`[Workspace] Changed to ${payload.newRoot}`);
         try {
-          const newRoot = payload?.newRoot || '';
-          const rootName = newRoot
-            ? newRoot
-                .split(/[/\\]+/)
-                .filter(Boolean)
-                .pop()
-            : null;
-          set({ workspaceRootName: rootName });
-
-          const { syncRealDiskToMemfs } = await import('../services/initSyncService.js');
-          const { useEditorStore } = await import('./editorStore.js');
-
-          workspaceAccessService.clear({
-            mode: 'backend',
-            label: payload.newRoot,
-            description: 'Saving through the backend workspace root.',
-          });
-          useEditorStore.getState().closeAllTabs();
-          await syncRealDiskToMemfs({ preferIDB: false, reset: true });
-          if (socket && newRoot) {
-            socket.emit('terminal:input', { input: `cd "${newRoot}"\r` });
-          }
-          await get().loadChats();
+          await applyWorkspaceChange(payload);
         } catch (err) {
           console.error('[Workspace] Failed to process workspace change:', err);
         }

@@ -7,14 +7,32 @@ const terminals = new Map();
 export const setupTerminalSocket = (io, socket) => {
   socket.on('terminal:spawn', (payload, callback) => {
     try {
-      // Determine shell based on OS
-      const shell = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
+      // Disconnect existing if respawning in same socket
+      const existing = terminals.get(socket.id);
+      if (existing) {
+        try {
+          existing.kill();
+        } catch (e) {}
+        terminals.delete(socket.id);
+      }
+
+      // Determine shell based on provided type
+      let shell = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
+      if (payload.shell === 'bash') {
+        shell = 'bash';
+      } else if (payload.shell === 'git-bash' && os.platform() === 'win32') {
+        shell = 'C:\\Program Files\\Git\\bin\\bash.exe';
+      } else if (payload.shell === 'powershell') {
+        shell = 'powershell.exe';
+      }
+
+      const cwd = getWorkspaceRoot();
 
       const ptyProcess = pty.spawn(shell, [], {
         name: 'xterm-color',
         cols: payload.cols || 80,
         rows: payload.rows || 24,
-        cwd: getWorkspaceRoot(),
+        cwd: cwd,
         useConpty: (process.env.PTY_USE_CONPTY || '').toLowerCase() === 'true',
         env: process.env,
       });
@@ -29,7 +47,7 @@ export const setupTerminalSocket = (io, socket) => {
         terminals.delete(socket.id);
       });
 
-      if (callback) callback({ success: true });
+      if (callback) callback({ success: true, cwd });
     } catch (error) {
       console.error(`[TerminalSocket] Failed to spawn terminal:`, error);
       if (callback) callback({ success: false, error: error.message });

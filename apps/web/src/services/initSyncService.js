@@ -42,8 +42,10 @@ export async function syncRealDiskToMemfs(opts = {}) {
 
     // 2. Hydrate from flat list
     for (const item of data.items) {
+      const normalizedPath = `/${item.path.replace(/^\/+/, '')}`;
+
       if (item.type === 'dir' || item.isDirectory) {
-        memfs.mkdir(item.path, { recursive: true }, 'SYNC');
+        memfs.mkdir(normalizedPath, { recursive: true }, 'FILE_SYSTEM');
       } else {
         // We write "stubs" for files — we don't fetch their content yet.
         // The editor will lazy-load via sockets.
@@ -51,7 +53,7 @@ export async function syncRealDiskToMemfs(opts = {}) {
         const hashStr = `stub-${Date.now()}`;
         blobStore.blobs.set(hashStr, new ArrayBuffer(0)); // empty content stub
 
-        const loc = memfs._traverse(item.path, true);
+        const loc = memfs._traverse(normalizedPath, true);
         if (loc) {
           loc.parentNode.children.set(loc.nodeName, {
             type: 'file',

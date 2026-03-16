@@ -4,9 +4,9 @@ import { useAgentStore } from '../../stores/agentStore';
 import { useFileSystemStore } from '../../stores/fileSystemStore';
 import TreeNode from './TreeNode';
 import {
-  openDirectoryViaFSA,
   openFilesViaInput,
   supportsDirectoryPicker,
+  openWorkspaceFolder,
 } from '../../services/localFileService.js';
 
 export default function FileTree() {
@@ -55,15 +55,9 @@ export default function FileTree() {
         </span>
         <button
           onClick={() => {
-            if (supportsDirectoryPicker) {
-              openDirectoryViaFSA().catch((err) =>
-                console.error('[FileTree] Open Folder Error:', err)
-              );
-            } else {
-              openFilesViaInput({ directory: true }).catch((err) =>
-                console.error('[FileTree] Open Folder Error:', err)
-              );
-            }
+            openWorkspaceFolder().catch((err) =>
+              console.error('[FileTree] Open Folder Error:', err)
+            );
           }}
           title="Open Folder from PC"
           style={{

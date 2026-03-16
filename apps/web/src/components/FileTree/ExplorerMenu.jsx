@@ -6,9 +6,9 @@
  */
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  openDirectoryViaFSA,
   openFilesViaInput,
   supportsDirectoryPicker,
+  openWorkspaceFolder,
 } from '../../services/localFileService.js';
 
 export default function ExplorerMenu({ onNewFile, onNewFolder }) {
@@ -28,15 +28,8 @@ export default function ExplorerMenu({ onNewFile, onNewFolder }) {
     {
       label: 'Open Folder...',
       action: () => {
-        if (supportsDirectoryPicker) {
-          openDirectoryViaFSA().catch((error) =>
-            console.error('[ExplorerMenu] Open folder failed:', error)
-          );
-          return;
-        }
-
-        openFilesViaInput({ directory: true }).catch((error) =>
-          console.error('[ExplorerMenu] Open folder import failed:', error)
+        openWorkspaceFolder().catch((error) =>
+          console.error('[ExplorerMenu] Open folder failed:', error)
         );
       },
     },
