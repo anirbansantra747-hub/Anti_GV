@@ -145,7 +145,11 @@ importers:
         specifier: ^6.0.0
         version: 6.4.1(@types/node@25.3.3)(yaml@2.8.2)
 
-  packages/ai-core: {}
+  packages/ai-core:
+    dependencies:
+      '@antigv/shared':
+        specifier: workspace:*
+        version: link:../shared
 
   packages/shared: {}
 

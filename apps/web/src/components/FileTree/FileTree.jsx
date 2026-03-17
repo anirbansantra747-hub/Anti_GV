@@ -10,13 +10,18 @@
  *  - File tree with react-arborist when files exist
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Tree } from 'react-arborist';
 import { Search, X } from 'lucide-react';
 import { useFileSystemStore } from '../../stores/fileSystemStore.js';
-import { useEditorStore } from '../../stores/editorStore.js';
 import { useAgentStore } from '../../stores/agentStore.js';
-import { handleDrop } from '../../services/localFileService.js';
+import { useEditorStore } from '../../stores/editorStore.js';
+import {
+  handleDrop,
+  openFilesViaInput,
+  supportsDirectoryPicker,
+  openWorkspaceFolder,
+} from '../../services/localFileService.js';
 import FileNode from './FileNode.jsx';
 import FileTreeActions from './FileTreeActions.jsx';
 import ExplorerMenu from './ExplorerMenu.jsx';
@@ -34,7 +39,7 @@ function toArboristNodes(nodes, parentPath = '') {
 
 export default function FileTree() {
   const treeData = useFileSystemStore((s) => s.treeData);
-  const socket = useAgentStore((s) => s.socket);
+  const workspaceRootPath = useAgentStore((s) => s.workspaceRootPath);
   const [selectedPath, setSelectedPath] = useState(null); // reactive so FileTreeActions re-renders
   const [isDragOver, setIsDragOver] = useState(false);
   const [dropProgress, setDropProgress] = useState(null);
@@ -43,6 +48,21 @@ export default function FileTree() {
 
   const rootChildren = treeData?.[0]?.children ?? [];
   const hasFiles = rootChildren.length > 0;
+  const hasOpenWorkspace = Boolean(workspaceRootPath);
+
+  const containerRef = useRef(null);
+  const [treeHeight, setTreeHeight] = useState(300);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setTreeHeight(entry.contentRect.height);
+      }
+    });
+    ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, [hasFiles]);
 
   // Filter tree nodes by search query
   const arboristData = useMemo(() => {
@@ -93,21 +113,6 @@ export default function FileTree() {
     } finally {
       setTimeout(() => setDropProgress(null), 400);
     }
-  };
-
-  const handleOpenFolder = () => {
-    if (!socket) {
-      console.error('[FileTree] Socket not connected');
-      return;
-    }
-    console.log('[FileTree] Emitting fs:pick_folder to open folder picker');
-    socket.emit('fs:pick_folder', {}, (response) => {
-      if (response?.success) {
-        console.log(`[FileTree] Folder opened successfully: ${response.newRoot}`);
-      } else if (!response?.canceled) {
-        console.error('[FileTree] Failed to open folder:', response?.error);
-      }
-    });
   };
 
   return (
@@ -257,7 +262,7 @@ export default function FileTree() {
       )}
 
       {/* ── Main Content Area ───────────────────────────────────────────── */}
-      <div style={{ flex: 1, overflow: 'auto', paddingTop: 4 }}>
+      <div ref={containerRef} style={{ flex: 1, overflow: 'hidden', paddingTop: 4 }}>
         {!hasFiles ? (
           /* Empty state — no folder opened yet */
           <div
@@ -268,14 +273,22 @@ export default function FileTree() {
               flexDirection: 'column',
               alignItems: 'center',
               gap: 16,
+              overflowY: 'auto',
+              height: '100%',
             }}
           >
             <div style={{ fontSize: 48, opacity: 0.6 }}>📂</div>
             <p style={{ color: '#94a3b8', fontSize: 13, margin: 0, lineHeight: 1.5 }}>
-              You have not yet opened a folder.
+              {hasOpenWorkspace
+                ? 'This folder is open but currently empty.'
+                : 'You have not yet opened a folder.'}
             </p>
             <button
-              onClick={handleOpenFolder}
+              onClick={() => {
+                openWorkspaceFolder().catch((error) =>
+                  console.error('[FileTree] Open folder failed:', error)
+                );
+              }}
               style={{
                 background: '#0e639c',
                 color: '#ffffff',
@@ -306,6 +319,7 @@ export default function FileTree() {
             onSelect={handleSelect}
             openByDefault={!!searchQuery}
             width="100%"
+            height={treeHeight}
             indent={16}
             rowHeight={28}
             overscanCount={4}

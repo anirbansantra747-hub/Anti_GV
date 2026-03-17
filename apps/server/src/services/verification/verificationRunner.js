@@ -14,6 +14,13 @@ const execAsync = util.promisify(exec);
 export async function runVerification({ workspaceId, socket, changedFiles }) {
   if (!workspaceId || !socket) return;
   const root = getWorkspaceRoot();
+  socket.emit('agent:run_state', {
+    phase: 'verify',
+    taskType: 'targeted_runtime_verification',
+    status: 'running',
+    filePaths: changedFiles,
+    message: `Verifying ${changedFiles.length} changed file(s)`,
+  });
 
   const checks = [];
   const hasJs = changedFiles.some((f) => /\.(js|jsx|ts|tsx)$/.test(f));
@@ -34,6 +41,13 @@ export async function runVerification({ workspaceId, socket, changedFiles }) {
 
   if (checks.length === 0) {
     socket.emit('agent:verify', { stream: 'info', text: 'No verification steps configured.\n' });
+    socket.emit('agent:run_state', {
+      phase: 'verify',
+      taskType: 'targeted_runtime_verification',
+      status: 'done',
+      filePaths: changedFiles,
+      message: 'No verification steps configured',
+    });
     return;
   }
 
@@ -51,6 +65,14 @@ export async function runVerification({ workspaceId, socket, changedFiles }) {
       });
     }
   }
+
+  socket.emit('agent:run_state', {
+    phase: 'verify',
+    taskType: 'targeted_runtime_verification',
+    status: 'done',
+    filePaths: changedFiles,
+    message: `Verification completed with ${checks.length} check(s)`,
+  });
 }
 
 async function hasNpmScript(root, scriptName) {

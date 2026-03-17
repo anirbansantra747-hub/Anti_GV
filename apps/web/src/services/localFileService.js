@@ -112,7 +112,6 @@ function shouldSkipPath(path) {
 
 // ── Core writer ────────────────────────────────────────────────────────────────
 
-
 /**
  * @param {Array<{ path: string, file: File }>} entries
  * @param {(progress: { done: number, total: number, current: string }) => void} [onProgress]
@@ -220,6 +219,58 @@ export async function openDirectoryViaFSA(onProgress) {
   return dirHandle.name;
 }
 
+/**
+ * Attempts to open a folder via the backend native picker first to ensure backend sync (Terminal, CWD).
+ * Falls back to browser APIs if pure-web or backend disconnects.
+ */
+export async function openWorkspaceFolder(onProgress) {
+  const { useAgentStore } = await import('../stores/agentStore.js');
+  const socket = useAgentStore.getState().socket;
+
+  if (socket) {
+    return new Promise((resolve) => {
+      socket.emit('fs:pick_folder', {}, (res) => {
+        if (res?.success) {
+          console.log('[openWorkspaceFolder] Native open folder success:', res.newRoot);
+          localStorage.setItem('last-workspace-path', res.newRoot);
+          Promise.resolve(
+            useAgentStore.getState().syncWorkspaceFromPayload?.({
+              newRoot: res.newRoot,
+              workspaceId: res.workspaceId,
+            })
+          )
+            .catch((error) => {
+              console.error('[openWorkspaceFolder] Native workspace sync failed:', error);
+            })
+            .finally(() => resolve(res.newRoot));
+        } else if (res?.canceled) {
+          console.log('[openWorkspaceFolder] Canceled by user.');
+          resolve(null);
+        } else {
+          console.error('[openWorkspaceFolder] Native picker failed, using fallback:', res?.error);
+          fallback();
+        }
+      });
+    });
+  } else {
+    return fallback();
+  }
+
+  function fallback() {
+    if (supportsDirectoryPicker) {
+      return openDirectoryViaFSA(onProgress).catch((err) => {
+        console.error('[openWorkspaceFolder] FSA fallback fail:', err);
+        throw err;
+      });
+    } else {
+      return openFilesViaInput({ directory: true }, onProgress).catch((err) => {
+        console.error('[openWorkspaceFolder] Input fallback fail:', err);
+        throw err;
+      });
+    }
+  }
+}
+
 async function collectDirectoryEntries(dirHandle, basePath) {
   const entries = [];
   for await (const [name, handle] of dirHandle.entries()) {
@@ -236,7 +287,6 @@ async function collectDirectoryEntries(dirHandle, basePath) {
       if (SKIP_SEGMENTS.has(name)) continue;
       const subEntries = await collectDirectoryEntries(handle, fullPath);
       entries.push(...subEntries);
-
     }
 
     if (['node_modules', '.git', '.turbo', 'dist', '.cache'].includes(name)) continue;

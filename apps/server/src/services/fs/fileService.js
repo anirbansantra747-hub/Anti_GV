@@ -9,6 +9,14 @@ export const getWorkspaceRoot = () => getWorkspaceState().rootPath;
 export const isWorkspaceExplicit = () => workspaceExplicit;
 export const isWorkspaceReady = () => isStateReady();
 
+function requireWorkspaceRoot() {
+  const root = getWorkspaceRoot();
+  if (!root) {
+    throw new Error('No workspace folder is currently open.');
+  }
+  return root;
+}
+
 /**
  * Changes the current backend workspace root directory dynamically.
  */
@@ -36,7 +44,7 @@ export const changeWorkspace = async (newPath) => {
 export const resolveSafePath = (targetPath) => {
   if (!targetPath) throw new Error('Path cannot be empty');
 
-  const root = getWorkspaceRoot();
+  const root = requireWorkspaceRoot();
   const absoluteRoot = path.resolve(root);
 
   // path.resolve(root, '/foo') on Windows might jump to the drive root.
@@ -91,6 +99,7 @@ export const exists = async (targetPath) => {
  * Lists directory contents
  */
 export const listDir = async (targetPath, opts = {}) => {
+  requireWorkspaceRoot();
   const safePath = resolveSafePath(targetPath);
   const recursive = Boolean(opts.recursive);
 
@@ -100,7 +109,9 @@ export const listDir = async (targetPath, opts = {}) => {
       name: dirent.name,
       type: dirent.isDirectory() ? 'dir' : 'file',
       isDirectory: dirent.isDirectory(),
-      path: path.relative(getWorkspaceRoot(), path.join(safePath, dirent.name)).replace(/\\/g, '/'),
+      path: path
+        .relative(requireWorkspaceRoot(), path.join(safePath, dirent.name))
+        .replace(/\\/g, '/'),
     }));
   }
 
@@ -111,7 +122,7 @@ export const listDir = async (targetPath, opts = {}) => {
       if (['node_modules', '.git', '.turbo', 'dist', '.cache'].includes(entry.name)) continue;
 
       const full = path.join(dir, entry.name);
-      const rel = path.relative(getWorkspaceRoot(), full).replace(/\\/g, '/');
+      const rel = path.relative(requireWorkspaceRoot(), full).replace(/\\/g, '/');
       const isDirectory = entry.isDirectory();
       items.push({
         name: entry.name,

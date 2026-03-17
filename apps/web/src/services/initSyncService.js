@@ -31,6 +31,10 @@ export async function syncRealDiskToMemfs(opts = {}) {
 
     const data = await res.json();
     if (!data.success || !data.items) return false;
+    if (data.workspaceReady === false) {
+      bus.emit(Events.FS_MUTATED, { workspaceId: memfs.workspace.id, path: null });
+      return true;
+    }
 
     // 1. We clear out memfs to avoid duplicates
     memfs.workspace.root = {

@@ -1,113 +1,113 @@
-/**
- * LLM Router
- * Task-based routing to best available model, with Groq→Cerebras→Gemini fallback chain.
- *
- * Task → Primary model:
- *   classify → OpenRouter step-3.5-flash  (fast, cheap)
- *   plan     → GitHub  DeepSeek-R1-0528   (reasoning, plans precisely)
- *   code     → GitHub  Codestral-2501     (purpose-built for code edits)
- *   critic   → GitHub  DeepSeek-R1-0528   (reasoning, catches mistakes)
- *   fixer    → GitHub  Codestral-2501     (code model for corrections)
- *
- * All tasks fall back to Groq llama-3.3-70b if the primary fails.
- * Streaming (ASK flow) always uses Groq → Cerebras → Gemini.
- */
+import { estimateTokens } from '@antigv/ai-core';
+import { AGENT_TASK_TYPES } from '@antigv/shared';
 import { generateGroqResponse, streamGroqResponse } from './groqClient.js';
-import { generateCerebrasResponse, streamCerebrasResponse } from './cerebrasClient.js';
 import { generateGeminiResponse, streamGeminiResponse } from './geminiClient.js';
-import { generateOpenRouterResponse } from './openRouterClient.js';
+import { generateNvidiaResponse, streamNvidiaResponse } from './nvidiaClient.js';
+import { generateOpenRouterResponse, streamOpenRouterResponse } from './openRouterClient.js';
 import { generateGithubModelsResponse } from './githubModelsClient.js';
+import { recordProviderFailure, recordProviderSuccess } from './providerHealthService.js';
+import { recordProviderSelection, recordTokenUsage } from './telemetryService.js';
+import { selectRoute } from './taskRouter.js';
 
-const TASK_ROUTES = {
-  classify: {
-    fn: generateOpenRouterResponse,
-    model: 'stepfun/step-3.5-flash',
+const PROVIDER_EXECUTORS = {
+  groq: {
+    generate: generateGroqResponse,
+    stream: streamGroqResponse,
   },
-  plan: {
-    fn: generateGithubModelsResponse,
-    model: 'deepseek/DeepSeek-R1-0528',
+  gemini: {
+    generate: generateGeminiResponse,
+    stream: streamGeminiResponse,
   },
-  code: {
-    fn: generateGithubModelsResponse,
-    model: 'mistral-ai/Codestral-2501',
+  nvidia: {
+    generate: generateNvidiaResponse,
+    stream: streamNvidiaResponse,
   },
-  critic: {
-    fn: generateGithubModelsResponse,
-    model: 'deepseek/DeepSeek-R1-0528',
+  openrouter: {
+    generate: generateOpenRouterResponse,
+    stream: streamOpenRouterResponse,
   },
-  fixer: {
-    fn: generateGithubModelsResponse,
-    model: 'mistral-ai/Codestral-2501',
+  github: {
+    generate: generateGithubModelsResponse,
   },
 };
 
-const LEGACY_PROVIDERS = ['groq', 'cerebras', 'gemini'];
+function enrichOptions(selected, route, options) {
+  return {
+    ...options,
+    model: options.model || selected.modelId,
+    max_tokens: options.max_tokens || route.maxOutputTokens || selected.maxOutputTokens,
+    temperature: options.temperature ?? route.temperature,
+    jsonMode: options.jsonMode ?? route.jsonMode,
+  };
+}
 
-export const generateResponse = async (messages, options = {}) => {
-  const { task, ...restOptions } = options;
+function getTaskType(options = {}) {
+  return options.taskType || AGENT_TASK_TYPES.CHAT_ANSWER;
+}
 
-  // ── Task-based routing ──────────────────────────────────────────────────
-  if (task && TASK_ROUTES[task]) {
-    const route = TASK_ROUTES[task];
-    const callOptions = { ...restOptions, model: restOptions.model || route.model };
+async function executeWithRoute(mode, messages, options = {}) {
+  const taskType = getTaskType(options);
+  const { route, candidates } = selectRoute(taskType, options.routeOverrides);
+
+  let lastError;
+
+  for (const candidate of candidates) {
+    const executor = PROVIDER_EXECUTORS[candidate.provider];
+    if (!executor?.[mode]) continue;
+
+    const startedAt = Date.now();
+
     try {
-      console.log(`[llmRouter] Task "${task}" → ${route.model}`);
-      return await route.fn(messages, callOptions);
-    } catch (err) {
-      console.warn(
-        `[llmRouter] Task "${task}" primary (${route.model}) failed: ${err.message}. Falling back to Groq...`
-      );
-      return await generateGroqResponse(messages, {
-        ...restOptions,
-        model: 'llama-3.3-70b-versatile',
+      recordProviderSelection(options.runId, {
+        taskType,
+        provider: candidate.provider,
+        model: candidate.modelId,
       });
+
+      const result = await executor[mode](messages, enrichOptions(candidate, route, options));
+      const latencyMs = Date.now() - startedAt;
+      recordProviderSuccess(candidate.provider, latencyMs);
+      recordTokenUsage(options.runId, {
+        taskType,
+        provider: candidate.provider,
+        model: candidate.modelId,
+        inputTokens: estimateTokens(messages.map((msg) => msg.content).join('\n')),
+        outputTokens:
+          mode === 'generate' && typeof result === 'string' ? estimateTokens(result) : 0,
+      });
+
+      return {
+        content: result,
+        provider: candidate.provider,
+        model: candidate.modelId,
+        taskType,
+        latencyMs,
+      };
+    } catch (error) {
+      lastError = error;
+      recordProviderFailure(candidate.provider, error);
     }
   }
 
-  // ── Legacy fallback chain ───────────────────────────────────────────────
-  let lastError;
-  for (const provider of LEGACY_PROVIDERS) {
-    try {
-      if (provider === 'groq') return await generateGroqResponse(messages, options);
-      if (provider === 'cerebras') {
-        const opts = { ...options };
-        delete opts.model;
-        return await generateCerebrasResponse(messages, opts);
-      }
-      if (provider === 'gemini') {
-        const opts = { ...options };
-        delete opts.model;
-        return await generateGeminiResponse(messages, opts);
-      }
-    } catch (error) {
-      console.warn(`[llmRouter] ${provider} failed: ${error.message}. Attempting fallback...`);
-      lastError = error;
-    }
-  }
-  throw new Error(`All LLM providers failed. Last error: ${lastError?.message}`);
-};
+  throw new Error(
+    `All LLM routes failed for task "${taskType}". Last error: ${lastError?.message}`
+  );
+}
 
-export const streamResponse = async (messages, options = {}) => {
-  let lastError;
-  for (const provider of LEGACY_PROVIDERS) {
-    try {
-      if (provider === 'groq') {
-        return { stream: await streamGroqResponse(messages, options), provider };
-      } else if (provider === 'cerebras') {
-        const fallbackOptions = { ...options };
-        delete fallbackOptions.model;
-        return { stream: await streamCerebrasResponse(messages, fallbackOptions), provider };
-      } else if (provider === 'gemini') {
-        const fallbackOptions = { ...options };
-        delete fallbackOptions.model;
-        return { stream: await streamGeminiResponse(messages, fallbackOptions), provider };
-      }
-    } catch (error) {
-      console.warn(
-        `[llmRouter] ${provider} stream failed: ${error.message}. Attempting fallback...`
-      );
-      lastError = error;
-    }
-  }
-  throw new Error(`All LLM providers failed in streaming. Last error: ${lastError?.message}`);
-};
+export async function generateTaskResponse(messages, options = {}) {
+  return executeWithRoute('generate', messages, options);
+}
+
+export async function streamTaskResponse(messages, options = {}) {
+  return executeWithRoute('stream', messages, options);
+}
+
+export async function generateResponse(messages, options = {}) {
+  const result = await generateTaskResponse(messages, options);
+  return result.content;
+}
+
+export async function streamResponse(messages, options = {}) {
+  const result = await streamTaskResponse(messages, options);
+  return { stream: result.content, provider: result.provider, model: result.model };
+}

@@ -35,10 +35,14 @@ export const useAgentStore = create((set, get) => {
     currentPlan: null,
     activeTransactionId: null,
     activeTransactionFiles: [],
+    activeTransactionMeta: {},
     chats: [],
     activeChatId: null,
     isChatLoading: false,
     workspaceRootName: null,
+    workspaceRootPath: null,
+    latestRunState: null,
+    controlPlane: null,
 
     connect: () => {
       if (socket) return;
@@ -46,10 +50,27 @@ export const useAgentStore = create((set, get) => {
 
       socket.on('connect', () => {
         set({ isConnected: true, socket });
+
+        // Restore the last workspace path if available
+        const lastWorkspacePath = localStorage.getItem('last-workspace-path');
+        if (lastWorkspacePath) {
+          socket.emit('fs:set_workspace', { path: lastWorkspacePath }, (res) => {
+            if (res?.success) {
+              console.log('[AgentStore] Successfully restored cached workspace:', res.newRoot);
+            } else {
+              console.error('[AgentStore] Failed to restore cached workspace:', res?.error);
+              localStorage.removeItem('last-workspace-path');
+            }
+          });
+        }
       });
 
       socket.on('disconnect', () => {
         set({ isConnected: false });
+      });
+
+      socket.on('agent:run_state', (payload) => {
+        set({ latestRunState: payload || null });
       });
 
       socket.on('fs:workspace_changed', async (payload) => {
@@ -62,7 +83,12 @@ export const useAgentStore = create((set, get) => {
                 .filter(Boolean)
                 .pop()
             : null;
-          set({ workspaceRootName: rootName });
+          if (newRoot) {
+            localStorage.setItem('last-workspace-path', newRoot);
+          } else {
+            localStorage.removeItem('last-workspace-path');
+          }
+          set({ workspaceRootName: rootName, workspaceRootPath: newRoot || null });
 
           const { syncRealDiskToMemfs } = await import('../services/initSyncService.js');
           const { useEditorStore } = await import('./editorStore.js');
@@ -158,6 +184,16 @@ export const useAgentStore = create((set, get) => {
             activeTransactionFiles: nextState.activeTransactionFiles.includes(absolutePath)
               ? nextState.activeTransactionFiles
               : [...nextState.activeTransactionFiles, absolutePath],
+            activeTransactionMeta: {
+              ...nextState.activeTransactionMeta,
+              [absolutePath]: {
+                fileGroupId: payload.fileGroupId || parsedChunk.fileGroupId || null,
+                files: payload.files || parsedChunk.files || [absolutePath],
+                verificationHints: payload.verificationHints || parsedChunk.verificationHints || [],
+                provider: payload.provider || null,
+                model: payload.model || null,
+              },
+            },
             messages: [
               ...nextState.messages,
               {
@@ -235,6 +271,9 @@ export const useAgentStore = create((set, get) => {
           return {
             isThinking: false,
             thinkingMessage: '',
+            latestRunState: state.latestRunState
+              ? { ...state.latestRunState, status: 'done' }
+              : state.latestRunState,
             messages: [
               ...state.messages,
               { id: Date.now(), role: 'assistant', type: 'text', content: message },
@@ -284,6 +323,17 @@ export const useAgentStore = create((set, get) => {
       }
     },
 
+    syncWorkspaceFromPayload: async (payload) => {
+      const newRoot = payload?.newRoot || '';
+      const rootName = newRoot
+        ? newRoot
+            .split(/[/\\]+/)
+            .filter(Boolean)
+            .pop()
+        : null;
+      set({ workspaceRootName: rootName, workspaceRootPath: newRoot || null });
+    },
+
     loadChats: async () => {
       set({ isChatLoading: true });
       try {
@@ -302,6 +352,16 @@ export const useAgentStore = create((set, get) => {
       } catch (err) {
         console.error('[AgentStore] Failed to load chats:', err);
         set({ isChatLoading: false });
+      }
+    },
+
+    loadControlPlane: async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/agent/control-plane`);
+        const data = await res.json();
+        set({ controlPlane: data });
+      } catch (err) {
+        console.error('[AgentStore] Failed to load control-plane status:', err);
       }
     },
 
@@ -489,6 +549,7 @@ export const useAgentStore = create((set, get) => {
         set((state) => ({
           activeTransactionId: null,
           activeTransactionFiles: [],
+          activeTransactionMeta: {},
           messages: [
             ...state.messages,
             {
@@ -536,6 +597,7 @@ export const useAgentStore = create((set, get) => {
         set((state) => ({
           activeTransactionId: null,
           activeTransactionFiles: [],
+          activeTransactionMeta: {},
           messages: [
             ...state.messages,
             {

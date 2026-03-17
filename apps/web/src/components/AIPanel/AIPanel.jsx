@@ -36,6 +36,10 @@ export default function AIPanel() {
     createChat,
     switchChat,
     isChatLoading,
+    latestRunState,
+    controlPlane,
+    loadControlPlane,
+    activeTransactionMeta,
   } = useAgentStore();
   const activeFile = useEditorStore((s) => s.activeFile);
   const source = useWorkspaceAccessStore((s) => s.source);
@@ -62,8 +66,9 @@ export default function AIPanel() {
   useEffect(() => {
     if (isConnected) {
       loadChats();
+      loadControlPlane();
     }
-  }, [isConnected, loadChats]);
+  }, [isConnected, loadChats, loadControlPlane]);
 
   useEffect(() => {
     let timer = null;
@@ -256,6 +261,59 @@ export default function AIPanel() {
         </button>
       </div>
 
+      {(latestRunState || controlPlane?.health) && (
+        <div
+          style={{
+            padding: '10px 14px',
+            borderBottom: '1px solid var(--panel-border)',
+            background: 'rgba(3,7,18,0.8)',
+            display: 'grid',
+            gap: 4,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 10,
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              color: 'var(--text-muted)',
+            }}
+          >
+            Control Plane
+          </span>
+          {latestRunState && (
+            <span style={{ fontSize: 12, color: 'var(--text-primary)' }}>
+              {latestRunState.phase} / {latestRunState.taskType}
+              {latestRunState.provider ? ` - ${latestRunState.provider}` : ''}
+              {latestRunState.model ? `:${latestRunState.model}` : ''}
+            </span>
+          )}
+          {latestRunState?.message && (
+            <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
+              {latestRunState.message}
+            </span>
+          )}
+          {controlPlane?.health && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {Object.entries(controlPlane.health).map(([provider, state]) => (
+                <span
+                  key={provider}
+                  style={{
+                    fontSize: 10,
+                    color: '#cbd5e1',
+                    border: '1px solid rgba(148,163,184,0.2)',
+                    padding: '3px 6px',
+                    background: 'rgba(15,23,42,0.5)',
+                  }}
+                >
+                  {provider}:{state.availabilityState}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Index Status */}
       <div
         style={{
@@ -411,11 +469,20 @@ export default function AIPanel() {
                         <code
                           style={{ background: '#00000044', padding: '2px 4px', borderRadius: 4 }}
                         >
-                          {s.filePath}
+                          {(s.files && s.files.length ? s.files.join(', ') : s.filePath) ||
+                            '(none)'}
                         </code>
                       </li>
                     ))}
                   </ul>
+                  {msg.data.validation && (
+                    <div style={{ marginTop: 10, fontSize: 11, color: 'var(--text-secondary)' }}>
+                      <div>Validation: {msg.data.validation.valid ? 'ready' : 'blocked'}</div>
+                      {msg.data.validation.warnings?.length > 0 && (
+                        <div>Warnings: {msg.data.validation.warnings.join(' | ')}</div>
+                      )}
+                    </div>
+                  )}
 
                   {/* If this is the active pending plan, show approval buttons */}
                   {currentPlan && currentPlan.summary === msg.data.summary && (
@@ -638,6 +705,9 @@ export default function AIPanel() {
                 }}
               >
                 {file}
+                {activeTransactionMeta[file]?.fileGroupId
+                  ? ` (${activeTransactionMeta[file].fileGroupId})`
+                  : ''}
               </span>
             ))}
           </div>
