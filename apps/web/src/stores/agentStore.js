@@ -43,6 +43,8 @@ export const useAgentStore = create((set, get) => {
     workspaceRootPath: null,
     latestRunState: null,
     controlPlane: null,
+    pipelinePhases: [],
+    activeStep: null,
 
     connect: () => {
       if (socket) return;
@@ -70,7 +72,25 @@ export const useAgentStore = create((set, get) => {
       });
 
       socket.on('agent:run_state', (payload) => {
-        set({ latestRunState: payload || null });
+        set((state) => {
+          const phases = [...state.pipelinePhases];
+          const existing = phases.findIndex(p => p.phase === payload.phase && p.taskType === payload.taskType);
+          const entry = {
+            phase: payload.phase,
+            taskType: payload.taskType,
+            status: payload.status,
+            provider: payload.provider || null,
+            model: payload.model || null,
+            message: payload.message || '',
+            timestamp: Date.now(),
+          };
+          if (existing >= 0) {
+            phases[existing] = { ...phases[existing], ...entry };
+          } else {
+            phases.push(entry);
+          }
+          return { latestRunState: payload || null, pipelinePhases: phases };
+        });
       });
 
       socket.on('fs:workspace_changed', async (payload) => {
@@ -125,7 +145,7 @@ export const useAgentStore = create((set, get) => {
       });
 
       socket.on('agent:step:start', (payload) => {
-        set({ isThinking: true, thinkingMessage: `Executing: ${payload.description}` });
+        set({ isThinking: true, thinkingMessage: `Executing: ${payload.description}`, activeStep: payload });
       });
 
       socket.on('agent:step:code', async (payload) => {
@@ -413,6 +433,8 @@ export const useAgentStore = create((set, get) => {
         ],
         isThinking: true,
         thinkingMessage: 'Gathering context...',
+        pipelinePhases: [],
+        activeStep: null,
       }));
 
       try {

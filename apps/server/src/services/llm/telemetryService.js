@@ -4,6 +4,13 @@ const aggregate = {
   stageTimings: {},
   providerUsage: {},
   taskUsage: {},
+  healthEvents: [],
+  qualityMetrics: {
+    consensusSuccesses: 0,
+    consensusFailures: 0,
+    repairAttempts: 0,
+    preFlightPasses: 0,
+  }
 };
 
 export function startRunTelemetry(runId, seed = {}) {
@@ -12,9 +19,14 @@ export function startRunTelemetry(runId, seed = {}) {
     startedAt: new Date().toISOString(),
     prompt: seed.prompt || '',
     stages: [],
-    providerSelections: [],
+    providerSelections: [], // Used for waterfalls
+    ensembleRaces: [],      // Used for parallel races / consensus
     tokens: [],
     status: 'running',
+    quality: {
+      consensusScore: null,
+      validatorAgreement: null,
+    }
   };
   runMetrics.set(runId, record);
   aggregate.totalRuns += 1;
@@ -42,10 +54,32 @@ export function recordProviderSelection(runId, payload) {
   aggregate.taskUsage[payload.taskType] = (aggregate.taskUsage[payload.taskType] || 0) + 1;
 }
 
+export function recordEnsembleRace(runId, payload) {
+  const record = runMetrics.get(runId);
+  if (!record) return;
+  record.ensembleRaces.push(payload);
+}
+
 export function recordTokenUsage(runId, payload) {
   const record = runMetrics.get(runId);
   if (!record) return;
   record.tokens.push(payload);
+}
+
+export function recordHealthEvent(event) {
+  aggregate.healthEvents.push({ ...event, timestamp: new Date().toISOString() });
+  // Keep last 50 events
+  if (aggregate.healthEvents.length > 50) {
+    aggregate.healthEvents.shift();
+  }
+}
+
+export function recordShadowEval(payload) {
+  aggregate.qualityMetrics.shadowEvals = aggregate.qualityMetrics.shadowEvals || [];
+  aggregate.qualityMetrics.shadowEvals.push({ ...payload, timestamp: new Date().toISOString() });
+  if (aggregate.qualityMetrics.shadowEvals.length > 50) {
+    aggregate.qualityMetrics.shadowEvals.shift();
+  }
 }
 
 export function finishRunTelemetry(runId, status, extra = {}) {

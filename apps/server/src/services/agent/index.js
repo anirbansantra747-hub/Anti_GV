@@ -15,6 +15,8 @@ import { assembleContext } from './contextAssembler.js';
 import { generatePlan } from './plannerAgent.js';
 import { validatePlan } from './planValidator.js';
 import { generateCodeEdits } from './coderAgent.js';
+import { activeCache } from './cacheService.js';
+import { activeShadowEval } from './shadowEvalService.js';
 
 function emitRunState(socket, payload) {
   socket.emit(SOCKET_EVENTS.AGENT_RUN_STATE, payload);
@@ -53,18 +55,44 @@ export async function runAgentPipeline({
       health: getProviderHealthSnapshot(),
     });
 
-    const taskBrief = await measureStage(runId, AGENT_RUN_PHASES.BRIEF, () =>
-      buildTaskBrief(prompt, frontendContext, { runId })
-    );
-    emitRunState(socket, {
-      runId,
-      phase: AGENT_RUN_PHASES.BRIEF,
-      taskType: AGENT_TASK_TYPES.TASK_BRIEF,
-      provider: taskBrief?._route?.provider,
-      model: taskBrief?._route?.model,
-      status: 'done',
-      message: taskBrief.requestedOutcome,
-    });
+    const cachedBrief = activeCache.get(AGENT_TASK_TYPES.TASK_BRIEF, prompt, '');
+    let taskBrief;
+
+    if (cachedBrief) {
+      taskBrief = cachedBrief;
+      emitRunState(socket, {
+        runId,
+        phase: AGENT_RUN_PHASES.BRIEF,
+        taskType: AGENT_TASK_TYPES.TASK_BRIEF,
+        provider: 'cache',
+        model: 'memory',
+        status: 'done',
+        message: `(Cached) ${taskBrief.requestedOutcome}`,
+      });
+    } else {
+      taskBrief = await measureStage(runId, AGENT_RUN_PHASES.BRIEF, () =>
+        buildTaskBrief(prompt, frontendContext, { runId })
+      );
+      activeCache.set(AGENT_TASK_TYPES.TASK_BRIEF, prompt, taskBrief, 86400000); // 24hr TTL
+
+      emitRunState(socket, {
+        runId,
+        phase: AGENT_RUN_PHASES.BRIEF,
+        taskType: AGENT_TASK_TYPES.TASK_BRIEF,
+        provider: taskBrief?._route?.provider,
+        model: taskBrief?._route?.model,
+        status: 'done',
+        message: taskBrief.requestedOutcome,
+      });
+
+      // Dispatch async evaluation to measure brief quality drift
+      if (taskBrief._rawMessages) {
+        activeShadowEval.dispatchShadowEval(AGENT_TASK_TYPES.TASK_BRIEF, taskBrief._rawMessages, {
+            content: taskBrief,
+            model: taskBrief._route?.model
+        });
+      }
+    }
 
     const intentResult = await measureStage(runId, AGENT_RUN_PHASES.INTENT, () =>
       classifyIntent(prompt, taskBrief, { runId })
@@ -145,9 +173,29 @@ export async function runAgentPipeline({
     socket.emit(SOCKET_EVENTS.AGENT_THINKING, { message: 'Generating execution plan...' });
     socket.emit(SOCKET_EVENTS.AGENT_STEP_START, { stepId: 'plan', description: 'Proposed Plan' });
 
-    const plan = await measureStage(runId, AGENT_RUN_PHASES.PLAN, () =>
-      generatePlan(prompt, taskBrief, fullContext, { runId })
-    );
+    const contextFingerprint = contextBundle.fingerprint || crypto.createHash('md5').update(fullContext).digest('hex');
+    const cachedPlan = activeCache.get(AGENT_TASK_TYPES.PLANNING, prompt, contextFingerprint);
+    let plan;
+
+    if (cachedPlan) {
+      plan = cachedPlan;
+      emitRunState(socket, {
+        runId, phase: AGENT_RUN_PHASES.PLAN, taskType: AGENT_TASK_TYPES.PLANNING,
+        provider: 'cache', model: 'memory', status: 'done', message: '(Cached Plan)'
+      });
+    } else {
+      plan = await measureStage(runId, AGENT_RUN_PHASES.PLAN, () =>
+        generatePlan(prompt, taskBrief, fullContext, { runId })
+      );
+      activeCache.set(AGENT_TASK_TYPES.PLANNING, prompt, plan, 21600000, contextFingerprint); // 6hr TTL
+      
+      if (plan._rawMessages) {
+        activeShadowEval.dispatchShadowEval(AGENT_TASK_TYPES.PLANNING, plan._rawMessages, {
+            content: plan,
+            model: plan.route?.model
+        });
+      }
+    }
 
     const planValidation = await measureStage(runId, AGENT_RUN_PHASES.VALIDATE, () =>
       validatePlan(plan, taskBrief, contextBundle)

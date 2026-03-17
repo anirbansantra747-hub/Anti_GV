@@ -12,7 +12,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Tree } from 'react-arborist';
-import { Search, X } from 'lucide-react';
+import { Search, X, RefreshCw, FilePlus, FolderPlus } from 'lucide-react';
 import { useFileSystemStore } from '../../stores/fileSystemStore.js';
 import { useAgentStore } from '../../stores/agentStore.js';
 import { useEditorStore } from '../../stores/editorStore.js';
@@ -22,6 +22,8 @@ import {
   supportsDirectoryPicker,
   openWorkspaceFolder,
 } from '../../services/localFileService.js';
+import { fileSystemAPI } from '../../services/fileSystemAPI.js';
+import { syncRealDiskToMemfs } from '../../services/initSyncService.js';
 import FileNode from './FileNode.jsx';
 import FileTreeActions from './FileTreeActions.jsx';
 import ExplorerMenu from './ExplorerMenu.jsx';
@@ -40,6 +42,7 @@ function toArboristNodes(nodes, parentPath = '') {
 export default function FileTree() {
   const treeData = useFileSystemStore((s) => s.treeData);
   const workspaceRootPath = useAgentStore((s) => s.workspaceRootPath);
+  const socket = useAgentStore((s) => s.socket);
   const [selectedPath, setSelectedPath] = useState(null); // reactive so FileTreeActions re-renders
   const [isDragOver, setIsDragOver] = useState(false);
   const [dropProgress, setDropProgress] = useState(null);
@@ -90,6 +93,72 @@ export default function FileTree() {
     setSelectedPath(node.id);
     if (node.data.type !== 'file' || node.data.binary) return;
     useEditorStore.getState().openFile(node.id);
+  };
+
+  const getParentPath = () => {
+    if (!selectedPath) return '';
+    const isFile = arboristData.some(n => findNodeType(n, selectedPath) === 'file');
+    if (isFile) {
+      return selectedPath.substring(0, selectedPath.lastIndexOf('/'));
+    }
+    return selectedPath;
+  };
+
+  const findNodeType = (node, targetId) => {
+    if (node.id === targetId) return node.type;
+    if (node.children) {
+      for (let child of node.children) {
+        let res = findNodeType(child, targetId);
+        if (res) return res;
+      }
+    }
+    return null;
+  };
+
+
+  const handleNewFile = () => {
+    const name = window.prompt("New file name:");
+    if (!name?.trim()) return;
+    const parentPath = getParentPath();
+    const fullPath = `${parentPath}/${name.trim()}`.replace(/\/\//g, '/');
+
+    try {
+      fileSystemAPI.writeFile(fullPath, '', { sourceModule: 'UI' });
+      if (socket) {
+        socket.emit('fs:create', { path: fullPath, type: 'file' }, (res) => {
+          if (!res?.success) console.error('[FileTree] Disk file create failed:', res?.error);
+        });
+      }
+      useEditorStore.getState().openFile(fullPath);
+    } catch (err) {
+      console.error('[FileTree] File creation failed:', err);
+    }
+  };
+
+  const handleNewFolder = () => {
+    const name = window.prompt("New folder name:");
+    if (!name?.trim()) return;
+    const parentPath = getParentPath();
+    const fullPath = `${parentPath}/${name.trim()}`.replace(/\/\//g, '/');
+
+    try {
+      fileSystemAPI.mkdir(fullPath, { recursive: true }, 'UI');
+      if (socket) {
+        socket.emit('fs:create', { path: fullPath, type: 'dir' }, (res) => {
+          if (!res?.success) console.error('[FileTree] Disk folder create failed:', res?.error);
+        });
+      }
+    } catch (err) {
+      console.error('[FileTree] Folder creation failed:', err);
+    }
+  };
+
+  const handleRefresh = async () => {
+    try {
+      await syncRealDiskToMemfs({ preferIDB: false, reset: false });
+    } catch (error) {
+       console.error('[FileTree] Refresh failed:', error);
+    }
   };
 
   // ── Drag & Drop handlers ────────────────────────────────────────────────────
@@ -150,10 +219,58 @@ export default function FileTree() {
         }}
       >
         <span>Explorer</span>
-        <ExplorerMenu
-          onNewFile={() => setInlineMode('file')}
-          onNewFolder={() => setInlineMode('folder')}
-        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <button
+            title="New File"
+            onClick={handleNewFile}
+            style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '3px' }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+              e.currentTarget.style.color = '#e2e8f0';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = '#94a3b8';
+            }}
+          >
+            <FilePlus size={14} />
+          </button>
+          <button
+            title="New Folder"
+            onClick={handleNewFolder}
+             style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '3px' }}
+             onMouseEnter={(e) => {
+               e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+               e.currentTarget.style.color = '#e2e8f0';
+             }}
+             onMouseLeave={(e) => {
+               e.currentTarget.style.background = 'transparent';
+               e.currentTarget.style.color = '#94a3b8';
+             }}
+          >
+            <FolderPlus size={14} />
+          </button>
+           <button
+             title="Refresh Explorer"
+             onClick={handleRefresh}
+             style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '3px' }}
+             onMouseEnter={(e) => {
+               e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+               e.currentTarget.style.color = '#e2e8f0';
+             }}
+             onMouseLeave={(e) => {
+               e.currentTarget.style.background = 'transparent';
+               e.currentTarget.style.color = '#94a3b8';
+             }}
+          >
+            <RefreshCw size={14} />
+          </button>
+          <ExplorerMenu
+            onNewFile={handleNewFile}
+            onNewFolder={handleNewFolder}
+            onRefresh={handleRefresh}
+          />
+        </div>
       </div>
 
       {/* ── Toolbar: New File, New Folder, Open File, Open Folder ────── */}

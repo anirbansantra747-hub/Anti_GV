@@ -6,6 +6,9 @@ import { runFixer } from './fixerAgent.js';
 import { validatePatchPayload } from './preflightValidator.js';
 import { renderContextBundle } from './contextBundleBuilder.js';
 import { readFile, exists, getWorkspaceRoot } from '../fs/fileService.js';
+import { activeShadowWorkspace } from './shadowWorkspace.js';
+import { runIncrementalVerification } from './verificationAgent.js';
+import { activePatternDetector } from './failurePatternDetector.js';
 import path from 'path';
 
 const CODER_SYSTEM_PROMPT = `
@@ -30,11 +33,22 @@ function addLineNumbers(content) {
     .join('\n');
 }
 
-function createFailureSignature(issues = []) {
-  return issues
-    .map((issue) => String(issue).trim().toLowerCase())
-    .sort()
-    .join('|');
+// Applies edits to block of text, identical to diffService apply patch
+// We need this locally to stage the simulated file in the shadow workspace
+function simulatePatchApplication(originalContent, edits) {
+   let result = originalContent;
+   for (const edit of edits) {
+     if (!edit.search) {
+       result = edit.replace; // New file logic
+       continue;
+     }
+     if (result.includes(edit.search)) {
+       result = result.replace(edit.search, edit.replace);
+     } else {
+       throw new Error(`Search block not found verbatim in file for this edit: ${edit.search.substring(0, 30)}...`);
+     }
+   }
+   return result;
 }
 
 export async function generateCodeEdits(plan, contextBundle, taskBrief, socket, options = {}) {
@@ -42,56 +56,37 @@ export async function generateCodeEdits(plan, contextBundle, taskBrief, socket, 
   const isCancelled = options.isCancelled || (() => false);
   const runId = options.runId;
 
+  // Reset shadow workspace and failure patterns for this execution run
+  activeShadowWorkspace.clearAll();
+  activePatternDetector.reset();
+
   for (const step of plan.steps || []) {
     if (isCancelled()) break;
 
     const files = step.files?.length ? step.files : [step.filePath].filter(Boolean);
     const primaryFile = files[0] || step.filePath;
+    const fileGroupId = step.fileGroupId || `group-${step.stepId}`;
 
     // -- Handle RUN_COMMAND explicitly --
     if (step.action === 'RUN_COMMAND') {
       const commandToRun = step.command || step.description;
-
-      socket.emit('agent:thinking', {
-        message: `Executing command for step ${step.stepId}: ${commandToRun}`,
-      });
+      socket.emit('agent:thinking', { message: `Executing command for step ${step.stepId}` });
       socket.emit('agent:run_state', {
-        runId,
-        phase: AGENT_RUN_PHASES.CODEGEN,
-        taskType: AGENT_TASK_TYPES.STEP_CODEGEN,
-        status: 'running',
-        stepId: step.stepId,
-        message: `Executing command: ${commandToRun}`,
+        runId, phase: AGENT_RUN_PHASES.CODEGEN, taskType: AGENT_TASK_TYPES.STEP_CODEGEN,
+        status: 'running', stepId: step.stepId, message: `Executing: ${commandToRun}`
       });
-      socket.emit('agent:step:start', {
-        stepId: `code_${step.stepId}`,
-        description: `Execute: ${commandToRun}`,
-      });
-
-      // Dispatch the command to the frontend's active Terminal
+      socket.emit('agent:step:start', { stepId: `code_${step.stepId}`, description: `Execute: ${commandToRun}` });
       socket.emit('agent:terminal:run', { command: commandToRun });
-
-      // Simulate completion of this command step
       socket.emit('agent:step:done', { stepId: `code_${step.stepId}` });
       continue;
     }
 
-    socket.emit('agent:thinking', {
-      message: `Writing code for step ${step.stepId}: ${step.description}`,
-    });
+    socket.emit('agent:thinking', { message: `Writing code for step ${step.stepId}` });
     socket.emit('agent:run_state', {
-      runId,
-      phase: AGENT_RUN_PHASES.CODEGEN,
-      taskType: AGENT_TASK_TYPES.STEP_CODEGEN,
-      status: 'running',
-      stepId: step.stepId,
-      filePaths: files,
-      message: `Codegen for step ${step.stepId}`,
+      runId, phase: AGENT_RUN_PHASES.CODEGEN, taskType: AGENT_TASK_TYPES.STEP_CODEGEN,
+      status: 'running', stepId: step.stepId, filePaths: files, message: `Codegen for step ${step.stepId}`
     });
-    socket.emit('agent:step:start', {
-      stepId: `code_${step.stepId}`,
-      description: `${step.action} ${primaryFile}`,
-    });
+    socket.emit('agent:step:start', { stepId: `code_${step.stepId}`, description: `${step.action} ${primaryFile}` });
 
     let actualFileContent = 'File not found or is new.';
     let effectiveFilePath = primaryFile;
@@ -99,7 +94,9 @@ export async function generateCodeEdits(plan, contextBundle, taskBrief, socket, 
     try {
       if (primaryFile) {
         effectiveFilePath = await normalizeWorkspacePath(primaryFile);
-        if (await exists(effectiveFilePath)) {
+        // Fallback to shadow workspace first to pick up changes from earlier steps
+        actualFileContent = await activeShadowWorkspace.getFileContent(effectiveFilePath);
+        if (!actualFileContent && await exists(effectiveFilePath)) {
           actualFileContent = await readFile(effectiveFilePath);
         }
       }
@@ -107,13 +104,9 @@ export async function generateCodeEdits(plan, contextBundle, taskBrief, socket, 
       console.warn(`[CoderAgent] Could not read ${effectiveFilePath}:`, error.message);
     }
 
-    const isExistingFile = actualFileContent !== 'File not found or is new.';
+    const isExistingFile = !!actualFileContent && actualFileContent !== 'File not found or is new.';
     const focusedContext = renderContextBundle(contextBundle, [
-      'workspaceFocus',
-      'retrievedChunks',
-      'symbolGraph',
-      'dependencyGraph',
-      'verificationEvidence',
+      'workspaceFocus', 'retrievedChunks', 'symbolGraph', 'dependencyGraph', 'verificationEvidence'
     ]);
 
     const stepPrompt = `CANONICAL TASK BRIEF:\n${JSON.stringify(taskBrief, null, 2)}\n\nAPPROVED PLAN STEP:\n${JSON.stringify(step, null, 2)}\n\nFOCUSED CONTEXT:\n${focusedContext}\n\nPRIMARY FILE:\n${effectiveFilePath}\n\nCURRENT FILE CONTENT (with line numbers for reference only):\n\`\`\`\n${isExistingFile ? addLineNumbers(actualFileContent) : '(new file)'}\n\`\`\``;
@@ -124,41 +117,58 @@ export async function generateCodeEdits(plan, contextBundle, taskBrief, socket, 
           { role: 'system', content: CODER_SYSTEM_PROMPT },
           { role: 'user', content: stepPrompt },
         ],
-        {
-          runId,
-          taskType: AGENT_TASK_TYPES.STEP_CODEGEN,
-          temperature: 0.1,
-          jsonMode: true,
-        }
+        { runId, taskType: AGENT_TASK_TYPES.STEP_CODEGEN, temperature: 0.1, jsonMode: true }
       );
 
       let editResult = JSON.parse(content);
       editResult.stepId = step.stepId;
       editResult.filePath = effectiveFilePath;
-      editResult.fileGroupId = step.fileGroupId || `group-${step.stepId}`;
+      editResult.fileGroupId = fileGroupId;
       editResult.files = files;
       editResult.verificationHints = step.verificationHints || [];
       editResult.retryCount = 0;
 
       let retryCount = 0;
-      let failureSignature = '';
       let feedback = '';
       let isCorrect = false;
 
       while (retryCount <= LIMITS.MAX_FIXER_RETRIES) {
+        
+        // 1. FAST PREFLIGHT
         const preflight = validatePatchPayload(editResult, isExistingFile ? actualFileContent : '');
         if (!preflight.valid) {
-          feedback = preflight.issues.join(' ');
+          feedback = `Preflight structural error: ${preflight.issues.join(' ')}`;
+          isCorrect = false;
         } else {
+          // 2. CRITIC CONSENSUS (LLM)
           const criticResult = await runCritic({
-            runId,
-            prompt: step.description,
-            fileContent: actualFileContent,
-            filePath: effectiveFilePath,
-            proposedEdits: editResult.edits || [],
+            runId, prompt: step.description, fileContent: actualFileContent,
+            filePath: effectiveFilePath, proposedEdits: editResult.edits || []
           });
+          
           isCorrect = criticResult.isCorrect;
           feedback = criticResult.feedback || '';
+
+          if (isCorrect) {
+            // 3. STAGE IN SHADOW WORKSPACE
+            try {
+              const patchedContent = simulatePatchApplication(isExistingFile ? actualFileContent : '', editResult.edits);
+              await activeShadowWorkspace.stagePatch(fileGroupId, effectiveFilePath, patchedContent);
+              
+              // 4. INCREMENTAL VERIFICATION (Syntax Native Check)
+              socket.emit('agent:thinking', { message: `Verifying syntax for step ${step.stepId}` });
+              const vResult = await runIncrementalVerification(fileGroupId, { runId });
+              
+              if (!vResult.verified) {
+                isCorrect = false;
+                feedback = `Verification Failed after patching: ${vResult.issues.map(i => i.message).join(' | ')}`;
+                activeShadowWorkspace.clearGroup(fileGroupId); // Revert shadow staging on fail
+              }
+            } catch (err) {
+              isCorrect = false;
+              feedback = `Patch Application Failed: ${err.message}`;
+            }
+          }
         }
 
         if (isCorrect) break;
@@ -166,27 +176,16 @@ export async function generateCodeEdits(plan, contextBundle, taskBrief, socket, 
         retryCount += 1;
         if (retryCount > LIMITS.MAX_FIXER_RETRIES) break;
 
-        const nextSignature = createFailureSignature([feedback]);
-        if (nextSignature && nextSignature === failureSignature) {
-          feedback = `Repeated failure detected: ${feedback}`;
-          break;
-        }
-        failureSignature = nextSignature;
-
+        // Run the robust Fixer Loop with Failure Pattern Detection (Model Rotation built-in)
+        socket.emit('agent:thinking', { message: `Fixing patch for step ${step.stepId} (Attempt ${retryCount})` });
         const fixedEdits = await runFixer({
-          runId,
-          prompt: step.description,
-          fileContent: actualFileContent,
-          filePath: effectiveFilePath,
-          previousEdits: editResult.edits || [],
+          runId, stepId: step.stepId, fileGroupId,
+          prompt: step.description, fileContent: actualFileContent,
+          filePath: effectiveFilePath, previousEdits: editResult.edits || [],
           errorFeedback: feedback,
         });
 
-        editResult = {
-          ...editResult,
-          edits: fixedEdits,
-          retryCount,
-        };
+        editResult = { ...editResult, edits: fixedEdits, retryCount };
       }
 
       edits.push(editResult);
@@ -196,17 +195,16 @@ export async function generateCodeEdits(plan, contextBundle, taskBrief, socket, 
         chunk: JSON.stringify(editResult, null, 2),
         provider,
         model,
-        criticFeedback: feedback || 'Approved on first pass.',
+        criticFeedback: feedback || 'Approved and verified on first pass.',
         file: effectiveFilePath,
         files,
         fileGroupId: editResult.fileGroupId,
         verificationHints: editResult.verificationHints,
       });
+
     } catch (error) {
       console.error(`[CoderAgent] Failed on step ${step.stepId}:`, error.message);
-      socket.emit('agent:error', {
-        message: `Coder failed on step ${step.stepId}: ${error.message}`,
-      });
+      socket.emit('agent:error', { message: `Coder failed on step ${step.stepId}: ${error.message}` });
     }
 
     socket.emit('agent:step:done', { stepId: `code_${step.stepId}` });
@@ -217,7 +215,6 @@ export async function generateCodeEdits(plan, contextBundle, taskBrief, socket, 
 
 export async function normalizeWorkspacePath(filePath) {
   if (!filePath) return '/';
-
   let normalized = filePath.replace(/\\/g, '/').trim();
   if (!normalized.startsWith('/')) normalized = '/' + normalized;
 
@@ -235,6 +232,5 @@ export async function normalizeWorkspacePath(filePath) {
   if (segments[0]?.toLowerCase() === rootName.toLowerCase()) {
     return '/' + segments.slice(1).join('/');
   }
-
   return normalized;
 }

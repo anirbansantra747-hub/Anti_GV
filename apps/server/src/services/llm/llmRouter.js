@@ -6,8 +6,11 @@ import { generateNvidiaResponse, streamNvidiaResponse } from './nvidiaClient.js'
 import { generateOpenRouterResponse, streamOpenRouterResponse } from './openRouterClient.js';
 import { generateGithubModelsResponse } from './githubModelsClient.js';
 import { recordProviderFailure, recordProviderSuccess } from './providerHealthService.js';
-import { recordProviderSelection, recordTokenUsage } from './telemetryService.js';
+import { recordProviderSelection, recordTokenUsage, recordEnsembleRace } from './telemetryService.js';
 import { selectRoute } from './taskRouter.js';
+import { ROUTING_STRATEGY } from './modelRegistry.js';
+import { allocateTokenBudget } from '../agent/tokenBudgetService.js';
+import { activeRateLimiter } from './rateLimitManager.js';
 
 const PROVIDER_EXECUTORS = {
   groq: {
@@ -47,13 +50,25 @@ function getTaskType(options = {}) {
 
 async function executeWithRoute(mode, messages, options = {}) {
   const taskType = getTaskType(options);
-  const { route, candidates } = selectRoute(taskType, options.routeOverrides);
+  const { route, candidates, strategy } = selectRoute(taskType, options.routeOverrides);
+
+  // Phase 5: Adaptive Budgeting
+  const complexity = options.complexity || 'medium';
+  const budget = allocateTokenBudget(taskType, complexity);
+
+  // Apply budget over top of route/model defaults
+  const enforceBudget = {
+     maxOutputTokens: budget.output_limit,
+     // We don't slice input locally, but we could if we strictly parse messages here
+  };
 
   let lastError;
 
-  for (const candidate of candidates) {
+  const executeCandidate = async (candidate) => {
     const executor = PROVIDER_EXECUTORS[candidate.provider];
-    if (!executor?.[mode]) continue;
+    if (!executor?.[mode]) {
+      throw new Error(`Mode ${mode} not supported for ${candidate.provider}`);
+    }
 
     const startedAt = Date.now();
 
@@ -64,16 +79,19 @@ async function executeWithRoute(mode, messages, options = {}) {
         model: candidate.modelId,
       });
 
-      const result = await executor[mode](messages, enrichOptions(candidate, route, options));
+      const finalOptions = enrichOptions(candidate, { ...route, ...enforceBudget }, options);
+      const result = await executor[mode](messages, finalOptions);
       const latencyMs = Date.now() - startedAt;
+      
       recordProviderSuccess(candidate.provider, latencyMs);
+      activeRateLimiter.recordUsage(candidate.provider); // Phase 5: Rate limit tick
+      
       recordTokenUsage(options.runId, {
         taskType,
         provider: candidate.provider,
         model: candidate.modelId,
         inputTokens: estimateTokens(messages.map((msg) => msg.content).join('\n')),
-        outputTokens:
-          mode === 'generate' && typeof result === 'string' ? estimateTokens(result) : 0,
+        outputTokens: mode === 'generate' && typeof result === 'string' ? estimateTokens(result) : 0,
       });
 
       return {
@@ -84,14 +102,55 @@ async function executeWithRoute(mode, messages, options = {}) {
         latencyMs,
       };
     } catch (error) {
-      lastError = error;
       recordProviderFailure(candidate.provider, error);
+      throw error;
+    }
+  };
+
+  // ----------------------------------------------------
+  // ROUTING STRATEGY EXECUTION
+  // ----------------------------------------------------
+
+  if (strategy === ROUTING_STRATEGY.FASTEST_FIRST || strategy === ROUTING_STRATEGY.PARALLEL_RACE) {
+    const parallelCount = route.parallelCount || 2;
+    const raceCandidates = candidates.slice(0, parallelCount);
+    const fallbackCandidates = candidates.slice(parallelCount);
+
+    recordEnsembleRace(options.runId, {
+      taskType,
+      strategy,
+      participants: raceCandidates.map(c => c.modelId),
+    });
+
+    try {
+      return await Promise.any(raceCandidates.map(c => executeCandidate(c)));
+    } catch (aggregateError) {
+      lastError = aggregateError;
+      console.warn(`[LLMRouter] Parallel race failed completely. Falling back sequentially.`);
+      // Fallback sequentially if parallel race loses all participants
+      for (const candidate of fallbackCandidates) {
+        try {
+          return await executeCandidate(candidate);
+        } catch (error) {
+          lastError = error;
+        }
+      }
+    }
+  } else {
+    // ----------------------------------------------------
+    // WATERFALL, SPECIALIST_FIRST, and Fallback CONSENSUS
+    // (Full Consensus graph merging is done at Agent level)
+    // ----------------------------------------------------
+    for (const candidate of candidates) {
+      try {
+        return await executeCandidate(candidate);
+      } catch (error) {
+        lastError = error;
+      }
     }
   }
 
-  throw new Error(
-    `All LLM routes failed for task "${taskType}". Last error: ${lastError?.message}`
-  );
+  throw new Error(`All LLM routes failed for task "${taskType}". Last error: ${lastError?.message || lastError}`);
 }
 
 export async function generateTaskResponse(messages, options = {}) {
