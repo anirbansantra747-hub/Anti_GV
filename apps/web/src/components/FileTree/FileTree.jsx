@@ -97,7 +97,7 @@ export default function FileTree() {
 
   const getParentPath = () => {
     if (!selectedPath) return '';
-    const isFile = arboristData.some(n => findNodeType(n, selectedPath) === 'file');
+    const isFile = arboristData.some((n) => findNodeType(n, selectedPath) === 'file');
     if (isFile) {
       return selectedPath.substring(0, selectedPath.lastIndexOf('/'));
     }
@@ -107,17 +107,16 @@ export default function FileTree() {
   const findNodeType = (node, targetId) => {
     if (node.id === targetId) return node.type;
     if (node.children) {
-      for (let child of node.children) {
-        let res = findNodeType(child, targetId);
+      for (const child of node.children) {
+        const res = findNodeType(child, targetId);
         if (res) return res;
       }
     }
     return null;
   };
 
-
   const handleNewFile = () => {
-    const name = window.prompt("New file name:");
+    const name = window.prompt('New file name:');
     if (!name?.trim()) return;
     const parentPath = getParentPath();
     const fullPath = `${parentPath}/${name.trim()}`.replace(/\/\//g, '/');
@@ -136,7 +135,7 @@ export default function FileTree() {
   };
 
   const handleNewFolder = () => {
-    const name = window.prompt("New folder name:");
+    const name = window.prompt('New folder name:');
     if (!name?.trim()) return;
     const parentPath = getParentPath();
     const fullPath = `${parentPath}/${name.trim()}`.replace(/\/\//g, '/');
@@ -157,7 +156,7 @@ export default function FileTree() {
     try {
       await syncRealDiskToMemfs({ preferIDB: false, reset: false });
     } catch (error) {
-       console.error('[FileTree] Refresh failed:', error);
+      console.error('[FileTree] Refresh failed:', error);
     }
   };
 
@@ -223,7 +222,17 @@ export default function FileTree() {
           <button
             title="New File"
             onClick={handleNewFile}
-            style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '3px' }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#94a3b8',
+              cursor: 'pointer',
+              padding: '2px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: '3px',
+            }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
               e.currentTarget.style.color = '#e2e8f0';
@@ -238,30 +247,50 @@ export default function FileTree() {
           <button
             title="New Folder"
             onClick={handleNewFolder}
-             style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '3px' }}
-             onMouseEnter={(e) => {
-               e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
-               e.currentTarget.style.color = '#e2e8f0';
-             }}
-             onMouseLeave={(e) => {
-               e.currentTarget.style.background = 'transparent';
-               e.currentTarget.style.color = '#94a3b8';
-             }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#94a3b8',
+              cursor: 'pointer',
+              padding: '2px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: '3px',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+              e.currentTarget.style.color = '#e2e8f0';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = '#94a3b8';
+            }}
           >
             <FolderPlus size={14} />
           </button>
-           <button
-             title="Refresh Explorer"
-             onClick={handleRefresh}
-             style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '3px' }}
-             onMouseEnter={(e) => {
-               e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
-               e.currentTarget.style.color = '#e2e8f0';
-             }}
-             onMouseLeave={(e) => {
-               e.currentTarget.style.background = 'transparent';
-               e.currentTarget.style.color = '#94a3b8';
-             }}
+          <button
+            title="Refresh Explorer"
+            onClick={handleRefresh}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#94a3b8',
+              cursor: 'pointer',
+              padding: '2px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: '3px',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+              e.currentTarget.style.color = '#e2e8f0';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = '#94a3b8';
+            }}
           >
             <RefreshCw size={14} />
           </button>
