@@ -1,6 +1,24 @@
-import { createEmptyPlanValidation, LIMITS } from '@antigv/shared';
+import { createEmptyPlanValidation, LIMITS, AGENT_TASK_TYPES } from '@antigv/shared';
+import { generateTaskResponse } from '../llm/llmRouter.js';
 
-export function validatePlan(plan, taskBrief = {}, contextBundle = {}) {
+const VALIDATOR_PROMPT = `
+You are a Senior Security & Architecture Code Reviewer.
+Your job is to validate a proposed AI execution plan to ensure it's safe and effective for the user's request.
+Output ONLY JSON in the following format:
+{
+  "isValid": boolean, // false ONLY if you find critical, dangerous flaws
+  "blockingIssues": ["Issue 1", "Issue 2"], // empty array if valid
+  "warnings": ["Warning 1"]
+}
+
+Fail the plan (isValid: false) IF AND ONLY IF:
+1. It proposes destructive actions without explicit user consent (e.g. deleting important files).
+2. It completely hallucinates files or paths not in the context.
+3. It clearly fails to address the user's core request.
+Be lenient on minor stylistic things, strict on safety and functionality.
+`;
+
+export async function validatePlan(plan, taskBrief = {}, contextBundle = {}) {
   const report = createEmptyPlanValidation();
   const steps = Array.isArray(plan?.steps) ? plan.steps : [];
 
@@ -8,6 +26,7 @@ export function validatePlan(plan, taskBrief = {}, contextBundle = {}) {
   const graph = {};
   const fileOwners = new Map();
 
+  // Structural checks
   for (const step of steps) {
     const deps = step.depends_on || step.dependsOn || [];
     graph[step.stepId] = deps;
@@ -57,6 +76,65 @@ export function validatePlan(plan, taskBrief = {}, contextBundle = {}) {
   }
 
   report.dependencyGraph = graph;
+
+  // If structurally invalid, fail early
+  if (report.blockingIssues.length > 0) {
+    report.valid = false;
+    return report;
+  }
+
+  // --- LLM Dual-Validator Consensus ---
+  try {
+    const { route, candidates } = await import('../llm/taskRouter.js').then((m) =>
+      m.selectRoute(AGENT_TASK_TYPES.PATCH_REVIEW)
+    );
+    const voters = candidates.slice(0, 2); // Dual validators
+
+    if (voters.length > 0) {
+      const messages = [
+        { role: 'system', content: VALIDATOR_PROMPT },
+        {
+          role: 'user',
+          content: `USER REQUEST:\n${taskBrief.requestedOutcome || 'N/A'}\n\nPROPOSED PLAN:\n${JSON.stringify(plan, null, 2)}`,
+        },
+      ];
+
+      const votes = await Promise.all(
+        voters.map((candidate) =>
+          generateTaskResponse(messages, {
+            taskType: AGENT_TASK_TYPES.PATCH_REVIEW,
+            temperature: 0.05,
+            jsonMode: true,
+            max_tokens: 1024,
+            routeOverrides: { strategy: 'WATERFALL', primaryPool: [candidate.modelId] },
+          }).catch((e) => {
+            console.warn(`[PlanValidator] Validator ${candidate.modelId} failed:`, e.message);
+            return null;
+          })
+        )
+      );
+
+      const validVotes = votes.filter(Boolean);
+      for (const vote of validVotes) {
+        try {
+          const parsed = JSON.parse(vote.content);
+          if (!parsed.isValid) {
+            report.blockingIssues.push(
+              `[Validator ${vote.model}] ${parsed.blockingIssues?.[0] || 'Plan deemed unsafe/invalid.'}`
+            );
+          }
+          if (parsed.warnings?.length > 0) {
+            report.warnings.push(...parsed.warnings.map((w) => `[Validator ${vote.model}] ${w}`));
+          }
+        } catch (e) {
+          // ignore parsing errors
+        }
+      }
+    }
+  } catch (err) {
+    console.warn(`[PlanValidator] LLM validation failed to execute:`, err.message);
+  }
+
   report.valid = report.blockingIssues.length === 0;
   return report;
 }

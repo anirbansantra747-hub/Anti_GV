@@ -9,7 +9,8 @@
     "start": "node --max-old-space-size=4096 src/app.js",
     "build": "echo 'No build step for server'",
     "lint": "eslint src/",
-    "lint:fix": "eslint src/ --fix"
+    "lint:fix": "eslint src/ --fix",
+    "test:regression": "node --test tests/regression/pipeline.test.js"
   },
   "dependencies": {
     "@antigv/ai-core": "workspace:*",

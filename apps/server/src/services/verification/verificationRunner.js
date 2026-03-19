@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file verificationRunner.js
  * @description Targeted verification after code edits.
  */
@@ -51,28 +51,44 @@ export async function runVerification({ workspaceId, socket, changedFiles }) {
     return;
   }
 
+  let allLogs = '';
+  let allPassed = true;
+
   for (const check of checks) {
     socket.emit('agent:verify', { stream: 'info', text: `Running ${check.name}...\n` });
+    allLogs += `\n--- Running ${check.name} ---\n`;
     try {
       const { stdout, stderr } = await execAsync(check.cmd, { cwd: root, timeout: 60000 });
-      if (stdout) socket.emit('agent:verify', { stream: 'stdout', text: stdout });
-      if (stderr) socket.emit('agent:verify', { stream: 'stderr', text: stderr });
+      if (stdout) {
+        socket.emit('agent:verify', { stream: 'stdout', text: stdout });
+        allLogs += `STDOUT:\n${stdout}\n`;
+      }
+      if (stderr) {
+        socket.emit('agent:verify', { stream: 'stderr', text: stderr });
+        allLogs += `STDERR:\n${stderr}\n`;
+      }
       socket.emit('agent:verify', { stream: 'info', text: `${check.name} completed.\n` });
     } catch (err) {
       socket.emit('agent:verify', {
         stream: 'stderr',
         text: `${check.name} failed: ${err.message}\n`,
       });
+      allLogs += `ERROR:\n${err.message}\n`;
+      if (err.stdout) allLogs += `STDOUT:\n${err.stdout}\n`;
+      if (err.stderr) allLogs += `STDERR:\n${err.stderr}\n`;
+      allPassed = false;
     }
   }
 
   socket.emit('agent:run_state', {
     phase: 'verify',
     taskType: 'targeted_runtime_verification',
-    status: 'done',
+    status: allPassed ? 'done' : 'error',
     filePaths: changedFiles,
     message: `Verification completed with ${checks.length} check(s)`,
   });
+
+  return { passed: allPassed, logs: allLogs, checks: checks.length };
 }
 
 async function hasNpmScript(root, scriptName) {

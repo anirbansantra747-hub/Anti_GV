@@ -17,6 +17,8 @@ import { validatePlan } from './planValidator.js';
 import { generateCodeEdits } from './coderAgent.js';
 import { activeCache } from './cacheService.js';
 import { activeShadowEval } from './shadowEvalService.js';
+import { runVerification } from '../verification/verificationRunner.js';
+import { activeShadowWorkspace } from './shadowWorkspace.js';
 
 function emitRunState(socket, payload) {
   socket.emit(SOCKET_EVENTS.AGENT_RUN_STATE, payload);
@@ -88,8 +90,8 @@ export async function runAgentPipeline({
       // Dispatch async evaluation to measure brief quality drift
       if (taskBrief._rawMessages) {
         activeShadowEval.dispatchShadowEval(AGENT_TASK_TYPES.TASK_BRIEF, taskBrief._rawMessages, {
-            content: taskBrief,
-            model: taskBrief._route?.model
+          content: taskBrief,
+          model: taskBrief._route?.model,
         });
       }
     }
@@ -173,26 +175,32 @@ export async function runAgentPipeline({
     socket.emit(SOCKET_EVENTS.AGENT_THINKING, { message: 'Generating execution plan...' });
     socket.emit(SOCKET_EVENTS.AGENT_STEP_START, { stepId: 'plan', description: 'Proposed Plan' });
 
-    const contextFingerprint = contextBundle.fingerprint || crypto.createHash('md5').update(fullContext).digest('hex');
+    const contextFingerprint =
+      contextBundle.fingerprint || crypto.createHash('md5').update(fullContext).digest('hex');
     const cachedPlan = activeCache.get(AGENT_TASK_TYPES.PLANNING, prompt, contextFingerprint);
     let plan;
 
     if (cachedPlan) {
       plan = cachedPlan;
       emitRunState(socket, {
-        runId, phase: AGENT_RUN_PHASES.PLAN, taskType: AGENT_TASK_TYPES.PLANNING,
-        provider: 'cache', model: 'memory', status: 'done', message: '(Cached Plan)'
+        runId,
+        phase: AGENT_RUN_PHASES.PLAN,
+        taskType: AGENT_TASK_TYPES.PLANNING,
+        provider: 'cache',
+        model: 'memory',
+        status: 'done',
+        message: '(Cached Plan)',
       });
     } else {
       plan = await measureStage(runId, AGENT_RUN_PHASES.PLAN, () =>
         generatePlan(prompt, taskBrief, fullContext, { runId })
       );
       activeCache.set(AGENT_TASK_TYPES.PLANNING, prompt, plan, 21600000, contextFingerprint); // 6hr TTL
-      
+
       if (plan._rawMessages) {
         activeShadowEval.dispatchShadowEval(AGENT_TASK_TYPES.PLANNING, plan._rawMessages, {
-            content: plan,
-            model: plan.route?.model
+          content: plan,
+          model: plan.route?.model,
         });
       }
     }
@@ -284,11 +292,129 @@ export async function runAgentPipeline({
       );
     }
 
-    finishRunTelemetry(runId, 'completed', {
+    // ─── Phase 11: Final Verification ────────────────────────────────
+    const changedFiles = Array.from(
+      new Set(
+        (plan.steps || [])
+          .flatMap((step) => (step.files?.length ? step.files : [step.filePath]))
+          .filter(Boolean)
+      )
+    );
+
+    let verificationResult = { passed: true, checks: 0 };
+
+    if (changedFiles.length > 0 && workspaceId) {
+      emitRunState(socket, {
+        runId,
+        phase: AGENT_RUN_PHASES.FINAL_VERIFY,
+        taskType: AGENT_TASK_TYPES.VERIFICATION_SUMMARY,
+        status: 'running',
+        filePaths: changedFiles,
+        message: `Running final verification on ${changedFiles.length} file(s)`,
+      });
+
+      try {
+        const rawResult = await measureStage(runId, AGENT_RUN_PHASES.FINAL_VERIFY, () =>
+          runVerification({ workspaceId, socket, changedFiles })
+        );
+        verificationResult = { passed: rawResult.passed, checks: rawResult.checks };
+
+        if (!rawResult.passed && rawResult.logs) {
+          // LLM Summarization of verification failure via PARALLEL_RACE
+          const summaryPrompt = `
+You are an expert Verification Summarizer.
+The following logs were produced during the final validation checks of code edits.
+Analyze the errors and provide a concise, 1-2 sentence human-readable summary of what failed.
+Do not output JSON, just the text.
+
+VERIFICATION LOGS:
+\`\`\`
+${rawResult.logs.substring(0, 4000)} // truncate to avoid blowing up context
+\`\`\`
+`;
+          try {
+            // PARALLEL_RACE is natively handled by router for this task type if configured,
+            // or we can explicitly request it via routeOverrides.
+            const { content } = await import('../llm/llmRouter.js').then((m) =>
+              m.generateTaskResponse([{ role: 'user', content: summaryPrompt }], {
+                runId,
+                taskType: AGENT_TASK_TYPES.VERIFICATION_SUMMARY,
+                temperature: 0.1,
+                max_tokens: 256,
+                routeOverrides: { strategy: 'PARALLEL_RACE' },
+              })
+            );
+            verificationResult.error = content.trim();
+          } catch (e) {
+            verificationResult.error = 'Verification logs indicate failure (summarization failed).';
+          }
+
+          // Emit REPAIR state to inform frontend, but do NOT enter a repair loop
+          emitRunState(socket, {
+            runId,
+            phase: AGENT_RUN_PHASES.REPAIR,
+            taskType: AGENT_TASK_TYPES.VERIFICATION_SUMMARY,
+            status: 'warning',
+            message: `Verification issues: ${verificationResult.error}`,
+          });
+        }
+      } catch (catastrophicError) {
+        console.warn(
+          `[Pipeline] Final verification encountered errors:`,
+          catastrophicError.message
+        );
+        verificationResult = {
+          passed: false,
+          checks: changedFiles.length,
+          error: catastrophicError.message,
+        };
+      }
+
+      emitRunState(socket, {
+        runId,
+        phase: AGENT_RUN_PHASES.FINAL_VERIFY,
+        taskType: AGENT_TASK_TYPES.VERIFICATION_SUMMARY,
+        status: verificationResult.passed ? 'done' : 'warning',
+        message: verificationResult.passed
+          ? `Verification passed for ${changedFiles.length} file(s)`
+          : `Verification completed with issues on ${changedFiles.length} file(s)`,
+      });
+    }
+
+    // ─── Phase 12: Commit & Telemetry ────────────────────────────────
+    const shadowConflicts = activeShadowWorkspace.getConflicts();
+    const groupInfo = {};
+    for (const [groupId] of activeShadowWorkspace.fileGroups || []) {
+      groupInfo[groupId] = {
+        files: activeShadowWorkspace.getGroupFiles(groupId),
+        hasConflicts: activeShadowWorkspace.hasConflicts(groupId),
+      };
+    }
+
+    emitRunState(socket, {
+      runId,
+      phase: AGENT_RUN_PHASES.COMMIT,
+      taskType: AGENT_TASK_TYPES.STEP_CODEGEN,
+      status: 'done',
+      message: `Commit phase: ${edits.length} patch groups ready`,
+      metadata: {
+        filesChanged: changedFiles.length,
+        patchGroups: edits.length,
+        verification: verificationResult,
+        conflicts: shadowConflicts,
+        groupInfo,
+      },
+    });
+
+    finishRunTelemetry(runId, verificationResult.passed ? 'completed' : 'partial_success', {
       intent: intentResult.intent,
       planValidation,
       edits: edits.length,
+      filesChanged: changedFiles.length,
+      verification: verificationResult,
+      conflicts: shadowConflicts.length,
     });
+
     emitRunState(socket, {
       runId,
       phase: AGENT_RUN_PHASES.REVIEW,

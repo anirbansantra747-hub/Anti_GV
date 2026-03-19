@@ -3,6 +3,9 @@ const PROVIDER_QUOTAS = {
   nvidia: { rpm: 20, rpd: 5000 }, // Based on NIM Free Tier
   github: { rpm: 15, rpd: 150 }, // strict github limits per model
   openrouter: { rpm: 10, rpd: 500 }, // fallback generic limit
+  together: { rpm: 20, rpd: 1000 }, // Together AI free tier
+  cerebras: { rpm: 30, rpd: 5000 }, // Cerebras free tier (fast)
+  huggingface: { rpm: 10, rpd: 300 }, // HuggingFace inference free tier
 };
 
 class RateLimitManager {
@@ -19,11 +22,11 @@ class RateLimitManager {
   _cleanupStale(provider) {
     const now = Date.now();
     const data = this.usageData.get(provider);
-    
+
     // Remove timestamps outside their respective windows
-    data.minute = data.minute.filter(t => now - t < 60000);
-    data.hour = data.hour.filter(t => now - t < 3600000);
-    data.day = data.day.filter(t => now - t < 86400000);
+    data.minute = data.minute.filter((t) => now - t < 60000);
+    data.hour = data.hour.filter((t) => now - t < 3600000);
+    data.day = data.day.filter((t) => now - t < 86400000);
   }
 
   /**
@@ -46,7 +49,7 @@ class RateLimitManager {
   calculateHeadroom(provider) {
     this._initProvider(provider);
     this._cleanupStale(provider);
-    
+
     const quota = PROVIDER_QUOTAS[provider];
     if (!quota) return 1.0; // Unknown provider, assume infinite quota
 

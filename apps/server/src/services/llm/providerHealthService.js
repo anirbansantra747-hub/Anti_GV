@@ -26,6 +26,24 @@ export const PROVIDER_POLICIES = {
     windowSizeMs: 300000, // 5 min
     halfOpenAfterMs: 600000, // 10 min cooldown (strict)
   },
+  together: {
+    failureThreshold: 4,
+    errorRateThreshold: 0.5,
+    windowSizeMs: 300000, // 5 min
+    halfOpenAfterMs: 60000,
+  },
+  cerebras: {
+    failureThreshold: 5,
+    errorRateThreshold: 0.5,
+    windowSizeMs: 300000, // 5 min
+    halfOpenAfterMs: 60000,
+  },
+  huggingface: {
+    failureThreshold: 3,
+    errorRateThreshold: 0.5,
+    windowSizeMs: 300000, // 5 min
+    halfOpenAfterMs: 120000, // 2 min cooldown
+  },
   default: {
     failureThreshold: 5,
     errorRateThreshold: 0.5,
@@ -79,7 +97,7 @@ function evaluateCircuitBreaker(state, policy, now) {
     if (now > state.breakerUntil) {
       // Transition to half-open to test the waters
       state.circuitState = 'half_open';
-      state.availabilityState = PROVIDER_AVAILABILITY.DEGRADED; 
+      state.availabilityState = PROVIDER_AVAILABILITY.DEGRADED;
     }
     return;
   }
@@ -98,7 +116,9 @@ function evaluateCircuitBreaker(state, policy, now) {
     state.circuitState = 'open';
     state.availabilityState = PROVIDER_AVAILABILITY.OPEN;
     state.breakerUntil = now + policy.halfOpenAfterMs;
-    console.warn(`[CircuitBreaker] Tripped OPEN for ${state.provider}. Cooldown: ${policy.halfOpenAfterMs}ms`);
+    console.warn(
+      `[CircuitBreaker] Tripped OPEN for ${state.provider}. Cooldown: ${policy.halfOpenAfterMs}ms`
+    );
   }
 }
 
@@ -118,9 +138,9 @@ export function isProviderAvailable(provider) {
   const state = getState(provider);
   const now = Date.now();
   const policy = getPolicy(provider);
-  
+
   evaluateCircuitBreaker(state, policy, now);
-  
+
   if (state.circuitState === 'open') return false;
   return true;
 }
@@ -147,7 +167,7 @@ export function recordProviderSuccess(provider, latencyMs) {
   if (typeof latencyMs === 'number') {
     state.latencyP95 =
       state.latencyP95 == null ? latencyMs : Math.round(state.latencyP95 * 0.9 + latencyMs * 0.1);
-    state.latencyP50 = 
+    state.latencyP50 =
       state.latencyP50 == null ? latencyMs : Math.round(state.latencyP50 * 0.7 + latencyMs * 0.3);
   }
 
@@ -182,7 +202,7 @@ export function recordProviderFailure(provider, error) {
 export function updateProviderAvailability(provider, available, details = {}) {
   const state = getState(provider);
   state.lastUpdatedAt = new Date().toISOString();
-  
+
   if (available) {
     if (state.circuitState === 'open') {
       state.circuitState = 'closed'; // Manual reset override

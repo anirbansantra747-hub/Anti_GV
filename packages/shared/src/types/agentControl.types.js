@@ -21,6 +21,9 @@ export const AGENT_RUN_PHASES = {
   PREFLIGHT: 'preflight',
   REVIEW: 'review',
   VERIFY: 'verify',
+  REPAIR: 'repair',
+  FINAL_VERIFY: 'final_verify',
+  COMMIT: 'commit',
   DONE: 'done',
   ERROR: 'error',
 };

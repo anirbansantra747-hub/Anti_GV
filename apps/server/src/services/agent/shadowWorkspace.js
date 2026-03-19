@@ -16,7 +16,8 @@ function normalizePath(filePath) {
 class ShadowWorkspace {
   constructor() {
     this.stagedFiles = new Map(); // Normalized path -> content
-    this.fileGroups = new Map();  // groupId -> Set<normalizedPath>
+    this.fileGroups = new Map(); // groupId -> Set<normalizedPath>
+    this.groupDependencies = new Map(); // groupId -> Set<groupId>
     this.conflicts = [];
   }
 
@@ -31,16 +32,16 @@ class ShadowWorkspace {
     return '';
   }
 
-  async stagePatch(fileGroupId, filePath, newContent) {
+  async stagePatch(fileGroupId, filePath, newContent, dependsOnGroups = []) {
     const normalized = normalizePath(filePath);
-    
+
     // Check for cross-group conflicts
     for (const [groupId, files] of this.fileGroups.entries()) {
       if (groupId !== fileGroupId && files.has(normalized)) {
         this.conflicts.push({
           file: normalized,
           groups: [groupId, fileGroupId],
-          message: `File modified by both ${groupId} and ${fileGroupId}`
+          message: `File modified by both ${groupId} and ${fileGroupId}`,
         });
       }
     }
@@ -50,6 +51,15 @@ class ShadowWorkspace {
       this.fileGroups.set(fileGroupId, new Set());
     }
     this.fileGroups.get(fileGroupId).add(normalized);
+
+    // Track dependencies
+    if (!this.groupDependencies.has(fileGroupId)) {
+      this.groupDependencies.set(fileGroupId, new Set(dependsOnGroups));
+    } else {
+      for (const dep of dependsOnGroups) {
+        this.groupDependencies.get(fileGroupId).add(dep);
+      }
+    }
 
     // Stage the content
     this.stagedFiles.set(normalized, newContent);
@@ -65,22 +75,57 @@ class ShadowWorkspace {
   }
 
   hasConflicts(fileGroupId) {
-    return this.conflicts.some(c => c.groups.includes(fileGroupId));
+    return this.conflicts.some((c) => c.groups.includes(fileGroupId));
   }
 
-  clearGroup(fileGroupId) {
+  getDependentGroups(fileGroupId) {
+    const dependents = [];
+    for (const [groupId, deps] of this.groupDependencies.entries()) {
+      if (deps.has(fileGroupId)) {
+        dependents.push(groupId);
+      }
+    }
+    return dependents;
+  }
+
+  rollbackGroup(fileGroupId) {
     const files = this.fileGroups.get(fileGroupId);
     if (files) {
-      files.forEach(f => this.stagedFiles.delete(f));
+      files.forEach((f) => this.stagedFiles.delete(f));
       this.fileGroups.delete(fileGroupId);
     }
+    this.groupDependencies.delete(fileGroupId);
     // Remove resolved conflicts
-    this.conflicts = this.conflicts.filter(c => !c.groups.includes(fileGroupId));
+    this.conflicts = this.conflicts.filter((c) => !c.groups.includes(fileGroupId));
+
+    // Cascade rollback to dependent groups
+    const dependents = this.getDependentGroups(fileGroupId);
+    for (const dep of dependents) {
+      this.rollbackGroup(dep);
+    }
+  }
+
+  async commitGroup(fileGroupId, writeService) {
+    const files = this.fileGroups.get(fileGroupId);
+    if (!files) return;
+
+    for (const normalized of files) {
+      const content = this.stagedFiles.get(normalized);
+      if (content !== undefined && writeService) {
+        await writeService.writeFile(normalized, content);
+      }
+      this.stagedFiles.delete(normalized);
+    }
+
+    this.fileGroups.delete(fileGroupId);
+    this.groupDependencies.delete(fileGroupId);
+    this.conflicts = this.conflicts.filter((c) => !c.groups.includes(fileGroupId));
   }
 
   clearAll() {
     this.stagedFiles.clear();
     this.fileGroups.clear();
+    this.groupDependencies.clear();
     this.conflicts = [];
   }
 }

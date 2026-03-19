@@ -74,7 +74,9 @@ export const useAgentStore = create((set, get) => {
       socket.on('agent:run_state', (payload) => {
         set((state) => {
           const phases = [...state.pipelinePhases];
-          const existing = phases.findIndex(p => p.phase === payload.phase && p.taskType === payload.taskType);
+          const existing = phases.findIndex(
+            (p) => p.phase === payload.phase && p.taskType === payload.taskType
+          );
           const entry = {
             phase: payload.phase,
             taskType: payload.taskType,
@@ -145,7 +147,11 @@ export const useAgentStore = create((set, get) => {
       });
 
       socket.on('agent:step:start', (payload) => {
-        set({ isThinking: true, thinkingMessage: `Executing: ${payload.description}`, activeStep: payload });
+        set({
+          isThinking: true,
+          thinkingMessage: `Executing: ${payload.description}`,
+          activeStep: payload,
+        });
       });
 
       socket.on('agent:step:code', async (payload) => {
@@ -626,13 +632,37 @@ export const useAgentStore = create((set, get) => {
               id: Date.now(),
               role: 'assistant',
               type: 'text',
-              content: 'Discarded the staged AI edits.',
+              content: 'Discarded all staged AI edits.',
             },
           ],
         }));
       } catch (err) {
         console.error('Failed to rollback transaction:', err);
       }
+    },
+
+    approveGroup: async (fileGroupId) => {
+      const state = get();
+      const metaKeys = Object.keys(state.activeTransactionMeta);
+      const pathsToApprove = metaKeys.filter(
+        (path) => state.activeTransactionMeta[path].fileGroupId === fileGroupId
+      );
+
+      if (pathsToApprove.length === 0) return;
+
+      await state.finalizeDiff({ acceptedPaths: pathsToApprove, rejectedPaths: [] });
+    },
+
+    rejectGroup: async (fileGroupId) => {
+      const state = get();
+      const metaKeys = Object.keys(state.activeTransactionMeta);
+      const pathsToReject = metaKeys.filter(
+        (path) => state.activeTransactionMeta[path].fileGroupId === fileGroupId
+      );
+
+      if (pathsToReject.length === 0) return;
+
+      await state.finalizeDiff({ acceptedPaths: [], rejectedPaths: pathsToReject });
     },
   };
 });

@@ -188,6 +188,114 @@ export const MODEL_REGISTRY = [
       priorityTier: 1,
     },
   },
+
+  // --- TIER 2B: ENSEMBLE EXPANSION (TOGETHER AI) ---
+  {
+    provider: 'together',
+    modelId: 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo',
+    displayName: 'Together Llama-3.1-70B Turbo',
+    capabilities: {
+      taskTypes: [
+        AGENT_TASK_TYPES.PLANNING,
+        AGENT_TASK_TYPES.STEP_CODEGEN,
+        AGENT_TASK_TYPES.FIX_GENERATION,
+        AGENT_TASK_TYPES.PATCH_REVIEW,
+      ],
+      contextWindow: 128000,
+      maxOutputTokens: 4096,
+      supportsJSON: true,
+      supportsStreaming: true,
+      supportsToolUse: false,
+      codingStrength: 88,
+      reasoningStrength: 85,
+      followingStrength: 90,
+    },
+    operational: {
+      healthState: PROVIDER_AVAILABILITY.UNKNOWN,
+      circuitBreakerPolicy: CB_POLICIES.STANDARD,
+      costTier: 'free_with_limits',
+      priorityTier: 6,
+    },
+  },
+  {
+    provider: 'together',
+    modelId: 'Qwen/Qwen2.5-72B-Instruct-Turbo',
+    displayName: 'Together Qwen2.5-72B Turbo',
+    capabilities: {
+      taskTypes: [
+        AGENT_TASK_TYPES.PLANNING,
+        AGENT_TASK_TYPES.STEP_CODEGEN,
+        AGENT_TASK_TYPES.FIX_GENERATION,
+      ],
+      contextWindow: 128000,
+      maxOutputTokens: 4096,
+      supportsJSON: true,
+      supportsStreaming: true,
+      supportsToolUse: false,
+      codingStrength: 90,
+      reasoningStrength: 88,
+      followingStrength: 88,
+    },
+    operational: {
+      healthState: PROVIDER_AVAILABILITY.UNKNOWN,
+      circuitBreakerPolicy: CB_POLICIES.STANDARD,
+      costTier: 'free_with_limits',
+      priorityTier: 6,
+    },
+  },
+
+  // --- TIER 2C: CEREBRAS (FAST FALLBACK) ---
+  {
+    provider: 'cerebras',
+    modelId: 'llama3.3-70b',
+    displayName: 'Cerebras Llama-3.3-70B',
+    capabilities: {
+      taskTypes: [
+        AGENT_TASK_TYPES.INTENT_CLASSIFICATION,
+        AGENT_TASK_TYPES.TASK_BRIEF,
+        AGENT_TASK_TYPES.CHAT_ANSWER,
+        AGENT_TASK_TYPES.STEP_CODEGEN,
+      ],
+      contextWindow: 128000,
+      maxOutputTokens: 8000,
+      supportsJSON: true,
+      supportsStreaming: true,
+      supportsToolUse: false,
+      codingStrength: 82,
+      reasoningStrength: 85,
+      followingStrength: 90,
+    },
+    operational: {
+      healthState: PROVIDER_AVAILABILITY.UNKNOWN,
+      circuitBreakerPolicy: CB_POLICIES.STANDARD,
+      costTier: 'free_with_limits',
+      priorityTier: 5,
+    },
+  },
+
+  // --- TIER 4: HUGGINGFACE (SPECIALIZED) ---
+  {
+    provider: 'huggingface',
+    modelId: 'mistralai/Mistral-7B-Instruct-v0.3',
+    displayName: 'HuggingFace Mistral-7B',
+    capabilities: {
+      taskTypes: [AGENT_TASK_TYPES.INTENT_CLASSIFICATION, AGENT_TASK_TYPES.CHAT_ANSWER],
+      contextWindow: 32768,
+      maxOutputTokens: 2048,
+      supportsJSON: false,
+      supportsStreaming: false,
+      supportsToolUse: false,
+      codingStrength: 55,
+      reasoningStrength: 60,
+      followingStrength: 65,
+    },
+    operational: {
+      healthState: PROVIDER_AVAILABILITY.UNKNOWN,
+      circuitBreakerPolicy: CB_POLICIES.RELAXED,
+      costTier: 'free',
+      priorityTier: 1,
+    },
+  },
 ];
 
 export const TASK_ROUTE_CONFIG = {
@@ -238,7 +346,9 @@ export const TASK_ROUTE_CONFIG = {
     strategy: ROUTING_STRATEGY.SPECIALIST_FIRST,
     primaryPool: ['meta/llama-3.3-70b-instruct', 'ibm/granite-34b-code-instruct'],
     fallbackPool: ['llama-3.3-70b-versatile'],
-    emergencyPool: ['gpt-4.1-mini'], // Very basic fallback
+    emergencyPool: ['gpt-4.1-mini', 'llama3.3-70b', 'Qwen/Qwen2.5-72B-Instruct-Turbo'],
+    experimentalPool: ['meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo'],
+    experimentTraffic: 0.1, // 10% of traffic goes to experimental
     maxInputTokens: LIMITS.MAX_TOKENS_PER_REQUEST,
     maxOutputTokens: 4000,
     timeoutMs: 30000,
@@ -265,8 +375,8 @@ export const TASK_ROUTE_CONFIG = {
     taskType: AGENT_TASK_TYPES.FIX_GENERATION,
     strategy: ROUTING_STRATEGY.WATERFALL,
     primaryPool: ['ibm/granite-34b-code-instruct', 'meta/llama-3.3-70b-instruct'],
-    fallbackPool: ['llama-3.3-70b-versatile'],
-    emergencyPool: [],
+    fallbackPool: ['llama-3.3-70b-versatile', 'Qwen/Qwen2.5-72B-Instruct-Turbo'],
+    emergencyPool: ['llama3.3-70b'],
     maxInputTokens: LIMITS.MAX_TOKENS_PER_REQUEST,
     maxOutputTokens: 2500,
     timeoutMs: 20000,

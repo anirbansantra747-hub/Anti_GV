@@ -10,7 +10,7 @@ const aggregate = {
     consensusFailures: 0,
     repairAttempts: 0,
     preFlightPasses: 0,
-  }
+  },
 };
 
 export function startRunTelemetry(runId, seed = {}) {
@@ -20,13 +20,13 @@ export function startRunTelemetry(runId, seed = {}) {
     prompt: seed.prompt || '',
     stages: [],
     providerSelections: [], // Used for waterfalls
-    ensembleRaces: [],      // Used for parallel races / consensus
+    ensembleRaces: [], // Used for parallel races / consensus
     tokens: [],
     status: 'running',
     quality: {
       consensusScore: null,
       validatorAgreement: null,
-    }
+    },
   };
   runMetrics.set(runId, record);
   aggregate.totalRuns += 1;
@@ -82,6 +82,64 @@ export function recordShadowEval(payload) {
   }
 }
 
+export function recordRepairMetric(runId, model, rotations) {
+  const record = runMetrics.get(runId);
+  if (record) {
+    record.quality.repairAttempts = (record.quality.repairAttempts || 0) + rotations;
+  }
+
+  aggregate.qualityMetrics.repairAttempts += rotations;
+
+  // Track per-model stats for drift detection
+  if (!aggregate.qualityMetrics.modelStats) {
+    aggregate.qualityMetrics.modelStats = {};
+  }
+  if (!aggregate.qualityMetrics.modelStats[model]) {
+    aggregate.qualityMetrics.modelStats[model] = {
+      totalTasks: 0,
+      totalRepairs: 0,
+      recentRepairs: [],
+    };
+  }
+
+  const stats = aggregate.qualityMetrics.modelStats[model];
+  stats.totalTasks += 1;
+  stats.totalRepairs += rotations;
+
+  // Keep a sliding window of the last 50 tasks for this model
+  stats.recentRepairs.push(rotations > 0 ? 1 : 0);
+  if (stats.recentRepairs.length > 50) {
+    stats.recentRepairs.shift();
+  }
+}
+
+export function getDriftAlerts() {
+  const alerts = [];
+  const modelStats = aggregate.qualityMetrics.modelStats || {};
+
+  for (const [model, stats] of Object.entries(modelStats)) {
+    if (stats.recentRepairs.length >= 10) {
+      const recentRepairRate =
+        stats.recentRepairs.reduce((a, b) => a + b, 0) / stats.recentRepairs.length;
+      const historicalRepairRate =
+        (stats.totalRepairs - stats.recentRepairs.reduce((a, b) => a + b, 0)) /
+        Math.max(1, stats.totalTasks - stats.recentRepairs.length);
+
+      // If the recent repair rate is 30% higher than historical, and absolute rate > 20%, it's drifting
+      if (recentRepairRate > 0.2 && recentRepairRate > historicalRepairRate * 1.3) {
+        alerts.push({
+          model,
+          level: 'warning',
+          message: `Model ${model} is showing performance drift (repair rate: ${(recentRepairRate * 100).toFixed(1)}%).`,
+          recentRepairRate,
+          historicalRepairRate,
+        });
+      }
+    }
+  }
+  return alerts;
+}
+
 export function finishRunTelemetry(runId, status, extra = {}) {
   const record = runMetrics.get(runId);
   if (!record) return null;
@@ -95,5 +153,6 @@ export function getTelemetryDashboard() {
   return {
     aggregate,
     runs: Array.from(runMetrics.values()).slice(-20),
+    driftAlerts: getDriftAlerts(),
   };
 }

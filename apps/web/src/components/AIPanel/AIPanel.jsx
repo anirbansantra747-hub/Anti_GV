@@ -7,9 +7,23 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import {
-  Send, Cpu, Check, X, Orbit, Eye, Square,
-  FileCode, FilePlus, FileX, Zap, Shield, AlertTriangle,
-  Clock, ChevronDown, ChevronRight, Activity
+  Send,
+  Cpu,
+  Check,
+  X,
+  Orbit,
+  Eye,
+  Square,
+  FileCode,
+  FilePlus,
+  FileX,
+  Zap,
+  Shield,
+  AlertTriangle,
+  Clock,
+  ChevronDown,
+  ChevronRight,
+  Activity,
 } from 'lucide-react';
 import { useAgentStore } from '../../stores/agentStore';
 import { useEditorStore } from '../../stores/editorStore.js';
@@ -20,27 +34,57 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 /* ────────────────────────── Sub-components ────────────────────────── */
 
-const PHASE_ORDER = ['health', 'brief', 'intent', 'context', 'plan', 'validate', 'codegen', 'verification', 'done'];
+const PHASE_ORDER = [
+  'health',
+  'brief',
+  'intent',
+  'context',
+  'plan',
+  'validate',
+  'codegen',
+  'verification',
+  'done',
+];
 const PHASE_LABELS = {
-  health: 'Health Check', brief: 'Task Brief', intent: 'Intent', context: 'Context',
-  plan: 'Planning', validate: 'Validation', codegen: 'Code Gen', verification: 'Verify', done: 'Complete'
+  health: 'Health Check',
+  brief: 'Task Brief',
+  intent: 'Intent',
+  context: 'Context',
+  plan: 'Planning',
+  validate: 'Validation',
+  codegen: 'Code Gen',
+  verification: 'Verify',
+  done: 'Complete',
 };
 
 function PipelineTimeline({ phases }) {
   if (!phases || phases.length === 0) return null;
 
   const phaseMap = {};
-  phases.forEach(p => { phaseMap[p.phase] = p; });
+  phases.forEach((p) => {
+    phaseMap[p.phase] = p;
+  });
 
   return (
-    <div style={{
-      padding: '10px 14px', borderBottom: '1px solid var(--panel-border)',
-      background: 'rgba(3,7,18,0.85)',
-    }}>
-      <div style={{
-        fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em',
-        color: 'var(--text-muted)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6
-      }}>
+    <div
+      style={{
+        padding: '10px 14px',
+        borderBottom: '1px solid var(--panel-border)',
+        background: 'rgba(3,7,18,0.85)',
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10,
+          textTransform: 'uppercase',
+          letterSpacing: '0.1em',
+          color: 'var(--text-muted)',
+          marginBottom: 8,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+        }}
+      >
         <Activity size={12} /> Pipeline
       </div>
       <div style={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -51,34 +95,83 @@ function PipelineTimeline({ phases }) {
           const isDone = status === 'done';
           const isError = status === 'blocked' || status === 'error';
 
-          const dotColor = isActive ? 'var(--accent)' : isDone ? '#10b981' : isError ? '#ef4444' : 'rgba(148,163,184,0.3)';
-          const labelColor = isActive ? 'var(--accent)' : isDone ? '#4ade80' : isError ? '#f87171' : 'var(--text-muted)';
+          const dotColor = isActive
+            ? 'var(--accent)'
+            : isDone
+              ? '#10b981'
+              : isError
+                ? '#ef4444'
+                : 'rgba(148,163,184,0.3)';
+          const labelColor = isActive
+            ? 'var(--accent)'
+            : isDone
+              ? '#4ade80'
+              : isError
+                ? '#f87171'
+                : 'var(--text-muted)';
 
           return (
             <React.Fragment key={key}>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, minWidth: 48 }}
-                title={phase ? `${phase.message || ''}\n${phase.provider || ''}:${phase.model || ''}` : 'Pending'}>
-                <div style={{
-                  width: 10, height: 10, borderRadius: '50%', background: dotColor,
-                  boxShadow: isActive ? `0 0 8px ${dotColor}` : 'none',
-                  transition: 'all 0.3s ease',
-                  animation: isActive ? 'panelSpin 2s linear infinite' : 'none',
-                }} />
-                <span style={{ fontSize: 9, color: labelColor, fontWeight: isActive ? 700 : 500, textAlign: 'center' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 3,
+                  minWidth: 48,
+                }}
+                title={
+                  phase
+                    ? `${phase.message || ''}\n${phase.provider || ''}:${phase.model || ''}`
+                    : 'Pending'
+                }
+              >
+                <div
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: '50%',
+                    background: dotColor,
+                    boxShadow: isActive ? `0 0 8px ${dotColor}` : 'none',
+                    transition: 'all 0.3s ease',
+                    animation: isActive ? 'panelSpin 2s linear infinite' : 'none',
+                  }}
+                />
+                <span
+                  style={{
+                    fontSize: 9,
+                    color: labelColor,
+                    fontWeight: isActive ? 700 : 500,
+                    textAlign: 'center',
+                  }}
+                >
                   {PHASE_LABELS[key] || key}
                 </span>
                 {phase?.model && (
-                  <span style={{ fontSize: 8, color: 'var(--text-muted)', maxWidth: 60, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span
+                    style={{
+                      fontSize: 8,
+                      color: 'var(--text-muted)',
+                      maxWidth: 60,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
                     {phase.model.split('/').pop()}
                   </span>
                 )}
               </div>
               {i < PHASE_ORDER.length - 1 && (
-                <div style={{
-                  flex: '0 0 auto', width: 12, height: 1,
-                  background: isDone ? '#10b981' : 'rgba(148,163,184,0.2)',
-                  marginBottom: 18,
-                }} />
+                <div
+                  style={{
+                    flex: '0 0 auto',
+                    width: 12,
+                    height: 1,
+                    background: isDone ? '#10b981' : 'rgba(148,163,184,0.2)',
+                    marginBottom: 18,
+                  }}
+                />
               )}
             </React.Fragment>
           );
@@ -90,18 +183,43 @@ function PipelineTimeline({ phases }) {
 
 function RiskBadge({ level }) {
   const config = {
-    low: { bg: 'rgba(16,185,129,0.15)', color: '#4ade80', border: 'rgba(16,185,129,0.3)', icon: Shield },
-    medium: { bg: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: 'rgba(251,191,36,0.3)', icon: AlertTriangle },
-    high: { bg: 'rgba(239,68,68,0.15)', color: '#f87171', border: 'rgba(239,68,68,0.3)', icon: AlertTriangle },
+    low: {
+      bg: 'rgba(16,185,129,0.15)',
+      color: '#4ade80',
+      border: 'rgba(16,185,129,0.3)',
+      icon: Shield,
+    },
+    medium: {
+      bg: 'rgba(251,191,36,0.15)',
+      color: '#fbbf24',
+      border: 'rgba(251,191,36,0.3)',
+      icon: AlertTriangle,
+    },
+    high: {
+      bg: 'rgba(239,68,68,0.15)',
+      color: '#f87171',
+      border: 'rgba(239,68,68,0.3)',
+      icon: AlertTriangle,
+    },
   };
   const c = config[level] || config.low;
   const Icon = c.icon;
   return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 4,
-      fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
-      padding: '3px 8px', background: c.bg, color: c.color, border: `1px solid ${c.border}`,
-    }}>
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+        fontSize: 10,
+        fontWeight: 700,
+        letterSpacing: '0.06em',
+        textTransform: 'uppercase',
+        padding: '3px 8px',
+        background: c.bg,
+        color: c.color,
+        border: `1px solid ${c.border}`,
+      }}
+    >
       <Icon size={10} /> {level}
     </span>
   );
@@ -110,128 +228,628 @@ function RiskBadge({ level }) {
 function ActionIcon({ action }) {
   const size = 12;
   switch ((action || '').toUpperCase()) {
-    case 'CREATE': return <FilePlus size={size} color="#4ade80" />;
-    case 'DELETE': return <FileX size={size} color="#f87171" />;
-    case 'RUN_COMMAND': return <Zap size={size} color="#fbbf24" />;
-    default: return <FileCode size={size} color="var(--accent)" />;
+    case 'CREATE':
+      return <FilePlus size={size} color="#4ade80" />;
+    case 'DELETE':
+      return <FileX size={size} color="#f87171" />;
+    case 'RUN_COMMAND':
+      return <Zap size={size} color="#fbbf24" />;
+    default:
+      return <FileCode size={size} color="var(--accent)" />;
   }
 }
 
 function PlanCard({ data, currentPlan, approvePlan, rejectPlan }) {
   const [expanded, setExpanded] = useState(true);
+  const [expandedSteps, setExpandedSteps] = useState({});
   const isActive = currentPlan && currentPlan.summary === data.summary;
 
+  const openInEditor = (filePath) => {
+    if (!filePath) return;
+    try {
+      useEditorStore.getState().openFile(filePath);
+    } catch (err) {
+      console.warn('[AIPanel] Could not open file in editor:', filePath, err);
+    }
+  };
+
+  const toggleStep = (stepId) => {
+    setExpandedSteps((prev) => ({ ...prev, [stepId]: !prev[stepId] }));
+  };
+
+  // Aggregate file impacts
+  const allSteps = data.steps || [];
+  const fileImpact = { CREATE: new Set(), MODIFY: new Set(), DELETE: new Set(), RUN_COMMAND: 0 };
+  for (const s of allSteps) {
+    const action = (s.action || 'MODIFY').toUpperCase();
+    const files = s.files?.length ? s.files : [s.filePath].filter(Boolean);
+    if (action === 'RUN_COMMAND') {
+      fileImpact.RUN_COMMAND++;
+    } else {
+      for (const f of files) {
+        (fileImpact[action] || fileImpact.MODIFY).add(f);
+      }
+    }
+  }
+
+  const confidencePercent =
+    typeof data.confidence === 'number' ? Math.round(data.confidence * 100) : null;
+
   return (
-    <div style={{
-      background: 'rgba(15,23,42,0.7)', border: '1px solid rgba(148,163,184,0.18)',
-      borderLeft: '3px solid var(--accent)',
-    }}>
-      {/* Header */}
-      <div onClick={() => setExpanded(!expanded)} style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '12px 14px', cursor: 'pointer', userSelect: 'none',
-      }}>
+    <div
+      style={{
+        background: 'rgba(15,23,42,0.7)',
+        border: '1px solid rgba(148,163,184,0.18)',
+        borderLeft: '3px solid var(--accent)',
+      }}
+    >
+      {/* ── Header ── */}
+      <div
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '12px 14px',
+          cursor: 'pointer',
+          userSelect: 'none',
+        }}
+      >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {expanded ? <ChevronDown size={14} color="var(--text-muted)" /> : <ChevronRight size={14} color="var(--text-muted)" />}
-          <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--accent)' }}>
+          {expanded ? (
+            <ChevronDown size={14} color="var(--text-muted)" />
+          ) : (
+            <ChevronRight size={14} color="var(--text-muted)" />
+          )}
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+              color: 'var(--accent)',
+            }}
+          >
             Implementation Plan
           </span>
           {data.risk_level && <RiskBadge level={data.risk_level} />}
         </div>
-        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-          {data.steps?.length || 0} steps
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {confidencePercent !== null && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span
+                style={{
+                  fontSize: 9,
+                  color: 'var(--text-muted)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                }}
+              >
+                Confidence
+              </span>
+              <div
+                style={{
+                  width: 40,
+                  height: 5,
+                  background: 'rgba(148,163,184,0.15)',
+                  overflow: 'hidden',
+                }}
+              >
+                <div
+                  style={{
+                    width: `${confidencePercent}%`,
+                    height: '100%',
+                    background:
+                      confidencePercent >= 80
+                        ? '#10b981'
+                        : confidencePercent >= 50
+                          ? '#fbbf24'
+                          : '#ef4444',
+                    transition: 'width 0.4s ease',
+                  }}
+                />
+              </div>
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  color:
+                    confidencePercent >= 80
+                      ? '#4ade80'
+                      : confidencePercent >= 50
+                        ? '#fbbf24'
+                        : '#f87171',
+                }}
+              >
+                {confidencePercent}%
+              </span>
+            </div>
+          )}
+          <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+            {allSteps.length} step{allSteps.length !== 1 ? 's' : ''}
+          </span>
+        </div>
       </div>
 
       {expanded && (
         <div style={{ padding: '0 14px 14px' }}>
-          {/* Summary */}
-          <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+          {/* ── Summary ── */}
+          <p
+            style={{
+              margin: '0 0 12px',
+              fontSize: 13,
+              color: 'var(--text-secondary)',
+              lineHeight: 1.6,
+            }}
+          >
             {data.summary}
           </p>
 
-          {/* Steps */}
-          <div style={{ display: 'grid', gap: 6 }}>
-            {(data.steps || []).map((s, i) => (
-              <div key={s.stepId || i} style={{
-                display: 'flex', alignItems: 'flex-start', gap: 10,
-                padding: '8px 10px',
-                background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(148,163,184,0.1)',
-              }}>
-                <span style={{
-                  fontSize: 10, fontWeight: 700, color: 'var(--text-muted)',
-                  minWidth: 20, textAlign: 'right', paddingTop: 2,
-                }}>
-                  {i + 1}.
-                </span>
-                <ActionIcon action={s.action} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    <span style={{
-                      fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
-                      padding: '1px 5px',
-                      background: s.action === 'CREATE' ? 'rgba(16,185,129,0.15)' : s.action === 'DELETE' ? 'rgba(239,68,68,0.15)' : 'rgba(34,211,238,0.1)',
-                      color: s.action === 'CREATE' ? '#4ade80' : s.action === 'DELETE' ? '#f87171' : 'var(--accent)',
-                    }}>
-                      {s.action || 'EDIT'}
-                    </span>
-                    {(s.files?.length ? s.files : [s.filePath]).filter(Boolean).map(f => (
-                      <code key={f} style={{
-                        fontSize: 11, background: 'rgba(0,0,0,0.4)', padding: '1px 5px',
-                        color: 'var(--text-primary)', maxWidth: 200, overflow: 'hidden',
-                        textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      }}>
-                        {f}
-                      </code>
-                    ))}
-                  </div>
-                  {s.description && (
-                    <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                      {s.description}
-                    </p>
-                  )}
-                </div>
-              </div>
-            ))}
+          {/* ── File Impact Summary ── */}
+          <div
+            style={{
+              display: 'flex',
+              gap: 8,
+              flexWrap: 'wrap',
+              marginBottom: 12,
+              padding: '8px 10px',
+              background: 'rgba(0,0,0,0.2)',
+              border: '1px solid rgba(148,163,184,0.1)',
+            }}
+          >
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                color: 'var(--text-muted)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                marginRight: 4,
+                paddingTop: 1,
+              }}
+            >
+              Impact:
+            </span>
+            {fileImpact.CREATE.size > 0 && (
+              <span
+                style={{
+                  fontSize: 10,
+                  padding: '2px 7px',
+                  background: 'rgba(16,185,129,0.15)',
+                  color: '#4ade80',
+                  fontWeight: 600,
+                }}
+              >
+                +{fileImpact.CREATE.size} new
+              </span>
+            )}
+            {fileImpact.MODIFY.size > 0 && (
+              <span
+                style={{
+                  fontSize: 10,
+                  padding: '2px 7px',
+                  background: 'rgba(34,211,238,0.1)',
+                  color: 'var(--accent)',
+                  fontWeight: 600,
+                }}
+              >
+                ~{fileImpact.MODIFY.size} modified
+              </span>
+            )}
+            {fileImpact.DELETE.size > 0 && (
+              <span
+                style={{
+                  fontSize: 10,
+                  padding: '2px 7px',
+                  background: 'rgba(239,68,68,0.15)',
+                  color: '#f87171',
+                  fontWeight: 600,
+                }}
+              >
+                -{fileImpact.DELETE.size} deleted
+              </span>
+            )}
+            {fileImpact.RUN_COMMAND > 0 && (
+              <span
+                style={{
+                  fontSize: 10,
+                  padding: '2px 7px',
+                  background: 'rgba(251,191,36,0.15)',
+                  color: '#fbbf24',
+                  fontWeight: 600,
+                }}
+              >
+                ⚡{fileImpact.RUN_COMMAND} command{fileImpact.RUN_COMMAND > 1 ? 's' : ''}
+              </span>
+            )}
           </div>
 
-          {/* Validation */}
+          {/* ── Assumptions ── */}
+          {data.assumptions?.length > 0 && (
+            <div
+              style={{
+                marginBottom: 10,
+                padding: '8px 10px',
+                fontSize: 11,
+                background: 'rgba(34,211,238,0.06)',
+                border: '1px solid rgba(34,211,238,0.15)',
+                color: 'var(--text-secondary)',
+                lineHeight: 1.5,
+              }}
+            >
+              <strong
+                style={{
+                  color: 'var(--accent)',
+                  fontSize: 10,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                }}
+              >
+                Assumptions
+              </strong>
+              <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                {data.assumptions.map((a, i) => (
+                  <li key={i}>{a}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* ── Clarifications Needed ── */}
+          {data.clarificationsNeeded?.length > 0 && (
+            <div
+              style={{
+                marginBottom: 10,
+                padding: '8px 10px',
+                fontSize: 11,
+                background: 'rgba(251,191,36,0.08)',
+                border: '1px solid rgba(251,191,36,0.2)',
+                color: '#fbbf24',
+                lineHeight: 1.5,
+              }}
+            >
+              <strong style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                ⚠ Clarifications Needed
+              </strong>
+              <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                {data.clarificationsNeeded.map((c, i) => (
+                  <li key={i}>{c}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* ── Steps ── */}
+          <div style={{ display: 'grid', gap: 6 }}>
+            {allSteps.map((s, i) => {
+              const stepKey = s.stepId || i;
+              const isStepExpanded = expandedSteps[stepKey] !== false; // default expanded
+              const files = (s.files?.length ? s.files : [s.filePath]).filter(Boolean);
+              const deps = s.depends_on?.length ? s.depends_on : [];
+
+              return (
+                <div
+                  key={stepKey}
+                  style={{
+                    background: 'rgba(0,0,0,0.25)',
+                    border: '1px solid rgba(148,163,184,0.1)',
+                  }}
+                >
+                  {/* Step header */}
+                  <div
+                    onClick={() => toggleStep(stepKey)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      padding: '8px 10px',
+                      cursor: 'pointer',
+                      userSelect: 'none',
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        color: 'var(--text-muted)',
+                        minWidth: 20,
+                        textAlign: 'right',
+                        paddingTop: 2,
+                      }}
+                    >
+                      {i + 1}.
+                    </span>
+                    <ActionIcon action={s.action} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}
+                      >
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.04em',
+                            padding: '1px 5px',
+                            background:
+                              s.action === 'CREATE'
+                                ? 'rgba(16,185,129,0.15)'
+                                : s.action === 'DELETE'
+                                  ? 'rgba(239,68,68,0.15)'
+                                  : s.action === 'RUN_COMMAND'
+                                    ? 'rgba(251,191,36,0.15)'
+                                    : 'rgba(34,211,238,0.1)',
+                            color:
+                              s.action === 'CREATE'
+                                ? '#4ade80'
+                                : s.action === 'DELETE'
+                                  ? '#f87171'
+                                  : s.action === 'RUN_COMMAND'
+                                    ? '#fbbf24'
+                                    : 'var(--accent)',
+                          }}
+                        >
+                          {s.action || 'MODIFY'}
+                        </span>
+                        {files.map((f) => (
+                          <button
+                            key={f}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openInEditor(f);
+                            }}
+                            title={
+                              s.action === 'CREATE'
+                                ? `📝 Will be created: ${f}`
+                                : `Open ${f} in editor`
+                            }
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              fontSize: 11,
+                              background: 'rgba(0,0,0,0.4)',
+                              padding: '1px 6px',
+                              color: 'var(--text-primary)',
+                              border: '1px solid rgba(148,163,184,0.12)',
+                              cursor: 'pointer',
+                              maxWidth: 220,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              transition: 'border-color 0.2s, background 0.2s',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.borderColor = 'var(--accent)';
+                              e.currentTarget.style.background = 'rgba(34,211,238,0.08)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.borderColor = 'rgba(148,163,184,0.12)';
+                              e.currentTarget.style.background = 'rgba(0,0,0,0.4)';
+                            }}
+                          >
+                            <Eye size={10} color="var(--accent)" />
+                            {f}
+                          </button>
+                        ))}
+                        {deps.length > 0 && (
+                          <span
+                            style={{
+                              fontSize: 9,
+                              padding: '1px 5px',
+                              background: 'rgba(148,163,184,0.08)',
+                              color: 'var(--text-muted)',
+                              border: '1px solid rgba(148,163,184,0.1)',
+                            }}
+                          >
+                            ← needs step {deps.join(', ')}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <span style={{ flexShrink: 0 }}>
+                      {isStepExpanded ? (
+                        <ChevronDown size={12} color="var(--text-muted)" />
+                      ) : (
+                        <ChevronRight size={12} color="var(--text-muted)" />
+                      )}
+                    </span>
+                  </div>
+
+                  {/* Step details */}
+                  {isStepExpanded && (
+                    <div style={{ padding: '0 10px 8px 44px' }}>
+                      {s.description && (
+                        <p
+                          style={{
+                            margin: '0 0 4px',
+                            fontSize: 11,
+                            color: 'var(--text-muted)',
+                            lineHeight: 1.5,
+                          }}
+                        >
+                          {s.description}
+                        </p>
+                      )}
+                      {s.command && (
+                        <code
+                          style={{
+                            display: 'block',
+                            fontSize: 11,
+                            padding: '4px 8px',
+                            marginBottom: 4,
+                            background: 'rgba(0,0,0,0.4)',
+                            color: '#fbbf24',
+                            whiteSpace: 'pre-wrap',
+                            border: '1px solid rgba(251,191,36,0.15)',
+                          }}
+                        >
+                          $ {s.command}
+                        </code>
+                      )}
+                      {s.verificationHints?.length > 0 && (
+                        <div
+                          style={{
+                            marginTop: 4,
+                            fontSize: 10,
+                            color: 'var(--text-muted)',
+                            opacity: 0.7,
+                          }}
+                        >
+                          <span style={{ fontWeight: 600 }}>Verify:</span>{' '}
+                          {s.verificationHints.join(' • ')}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* ── Verification Plan ── */}
+          {data.verificationPlan?.length > 0 && (
+            <div
+              style={{
+                marginTop: 10,
+                padding: '8px 10px',
+                fontSize: 11,
+                background: 'rgba(34,211,238,0.05)',
+                border: '1px solid rgba(34,211,238,0.12)',
+                color: 'var(--text-secondary)',
+                lineHeight: 1.5,
+              }}
+            >
+              <strong
+                style={{
+                  color: 'var(--accent)',
+                  fontSize: 10,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                }}
+              >
+                Verification Plan
+              </strong>
+              <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                {data.verificationPlan.map((v, i) => (
+                  <li key={i}>{v}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* ── Validation Report ── */}
           {data.validation && (
-            <div style={{
-              marginTop: 10, padding: '8px 10px', fontSize: 11,
-              background: data.validation.valid ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)',
-              border: `1px solid ${data.validation.valid ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`,
-              color: data.validation.valid ? '#4ade80' : '#f87171',
-            }}>
-              <strong>{data.validation.valid ? '✓ Validation Passed' : '✗ Validation Blocked'}</strong>
+            <div
+              style={{
+                marginTop: 10,
+                padding: '8px 10px',
+                fontSize: 11,
+                background: data.validation.valid
+                  ? 'rgba(16,185,129,0.08)'
+                  : 'rgba(239,68,68,0.08)',
+                border: `1px solid ${data.validation.valid ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`,
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  marginBottom: 4,
+                  color: data.validation.valid ? '#4ade80' : '#f87171',
+                }}
+              >
+                {data.validation.valid ? <Check size={12} /> : <AlertTriangle size={12} />}
+                <strong>
+                  {data.validation.valid ? 'Validation Passed' : 'Validation Blocked'}
+                </strong>
+              </div>
+              {data.validation.blockingIssues?.length > 0 && (
+                <ul style={{ margin: '4px 0', paddingLeft: 18, color: '#f87171' }}>
+                  {data.validation.blockingIssues.map((issue, i) => (
+                    <li key={i} style={{ marginBottom: 2 }}>
+                      {issue}
+                    </li>
+                  ))}
+                </ul>
+              )}
               {data.validation.warnings?.length > 0 && (
-                <div style={{ marginTop: 4, color: '#fbbf24' }}>
-                  ⚠ {data.validation.warnings.join(' | ')}
+                <div style={{ marginTop: 4 }}>
+                  {data.validation.warnings.map((w, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        color: '#fbbf24',
+                        display: 'flex',
+                        gap: 4,
+                        alignItems: 'flex-start',
+                      }}
+                    >
+                      <span style={{ flexShrink: 0 }}>⚠</span> <span>{w}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {data.validation.missingContext?.length > 0 && (
+                <div style={{ marginTop: 4, color: 'var(--text-muted)' }}>
+                  <span style={{ fontSize: 10, fontWeight: 600 }}>Missing context for:</span>{' '}
+                  {data.validation.missingContext.join(', ')}
+                </div>
+              )}
+              {typeof data.validation.scopeDelta === 'number' && data.validation.scopeDelta > 2 && (
+                <div style={{ marginTop: 4, color: '#fbbf24', fontSize: 10 }}>
+                  Scope is {data.validation.scopeDelta}× broader than the requested change
                 </div>
               )}
             </div>
           )}
 
-          {/* Approval Buttons */}
+          {/* ── Approval Buttons ── */}
           {isActive && (
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button onClick={approvePlan} style={{
-                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                background: '#10b981', color: '#fff', border: 'none', padding: '9px',
-                cursor: 'pointer', fontSize: 12, fontWeight: 700, transition: 'background 0.2s',
-              }}
-                onMouseEnter={e => e.currentTarget.style.background = '#059669'}
-                onMouseLeave={e => e.currentTarget.style.background = '#10b981'}>
+              <button
+                onClick={approvePlan}
+                style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  background: '#10b981',
+                  color: '#fff',
+                  border: 'none',
+                  padding: '9px',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  transition: 'background 0.2s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = '#059669')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = '#10b981')}
+              >
                 <Check size={14} strokeWidth={3} /> Approve Plan
               </button>
-              <button onClick={rejectPlan} style={{
-                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                background: 'rgba(255,255,255,0.05)', color: '#cbd5e1',
-                border: '1px solid var(--panel-border)', padding: '9px',
-                cursor: 'pointer', fontSize: 12, fontWeight: 500, transition: 'background 0.2s',
-              }}
-                onMouseEnter={e => e.currentTarget.style.background = '#ef444455'}
-                onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}>
+              <button
+                onClick={rejectPlan}
+                style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  background: 'rgba(255,255,255,0.05)',
+                  color: '#cbd5e1',
+                  border: '1px solid var(--panel-border)',
+                  padding: '9px',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  fontWeight: 500,
+                  transition: 'background 0.2s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = '#ef444455')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
+              >
                 <X size={14} strokeWidth={2} /> Reject
               </button>
             </div>
@@ -244,33 +862,46 @@ function PlanCard({ data, currentPlan, approvePlan, rejectPlan }) {
 
 function FileChangeBadge({ msg }) {
   const file = msg.content?.match(/Staged edits for (.+?) in/)?.[1] || 'file';
-  const isApproved = msg.criticFeedback?.includes('Approved') || msg.criticFeedback?.includes('verified');
+  const isApproved =
+    msg.criticFeedback?.includes('Approved') || msg.criticFeedback?.includes('verified');
 
   return (
-    <div style={{
-      background: 'var(--app-bg)', border: '1px solid var(--panel-border)',
-      borderLeft: `3px solid ${isApproved ? '#10b981' : '#fbbf24'}`,
-      padding: '10px 14px',
-    }}>
+    <div
+      style={{
+        background: 'var(--app-bg)',
+        border: '1px solid var(--panel-border)',
+        borderLeft: `3px solid ${isApproved ? '#10b981' : '#fbbf24'}`,
+        padding: '10px 14px',
+      }}
+    >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
         <FileCode size={14} color="var(--accent)" />
         <code style={{ fontSize: 12, color: 'var(--text-primary)', fontWeight: 600 }}>{file}</code>
-        <span style={{
-          fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em',
-          padding: '2px 6px',
-          background: isApproved ? 'rgba(16,185,129,0.15)' : 'rgba(251,191,36,0.15)',
-          color: isApproved ? '#4ade80' : '#fbbf24',
-        }}>
+        <span
+          style={{
+            fontSize: 9,
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            letterSpacing: '0.06em',
+            padding: '2px 6px',
+            background: isApproved ? 'rgba(16,185,129,0.15)' : 'rgba(251,191,36,0.15)',
+            color: isApproved ? '#4ade80' : '#fbbf24',
+          }}
+        >
           {isApproved ? 'Verified' : 'Needs Review'}
         </span>
       </div>
       {msg.criticFeedback && (
-        <div style={{
-          fontSize: 11, color: isApproved ? '#4ade80' : '#fbbf24',
-          padding: '6px 8px', background: 'rgba(0,0,0,0.2)',
-          borderTop: '1px dashed var(--panel-border)',
-          lineHeight: 1.5,
-        }}>
+        <div
+          style={{
+            fontSize: 11,
+            color: isApproved ? '#4ade80' : '#fbbf24',
+            padding: '6px 8px',
+            background: 'rgba(0,0,0,0.2)',
+            borderTop: '1px dashed var(--panel-border)',
+            lineHeight: 1.5,
+          }}
+        >
           <strong style={{ opacity: 0.7, fontSize: 10 }}>Critic:</strong> {msg.criticFeedback}
         </div>
       )}
@@ -280,32 +911,62 @@ function FileChangeBadge({ msg }) {
 
 function ThinkingIndicator({ message, latestRunState, activeStep, onTerminate }) {
   return (
-    <div style={{
-      alignSelf: 'flex-start', color: 'var(--text-secondary)', fontSize: 12,
-      display: 'flex', flexDirection: 'column', gap: 6,
-      background: 'rgba(255,255,255,0.03)', padding: '10px 14px',
-      border: '1px solid var(--panel-border)', width: '100%', boxSizing: 'border-box',
-    }}>
+    <div
+      style={{
+        alignSelf: 'flex-start',
+        color: 'var(--text-secondary)',
+        fontSize: 12,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 6,
+        background: 'rgba(255,255,255,0.03)',
+        padding: '10px 14px',
+        border: '1px solid var(--panel-border)',
+        width: '100%',
+        boxSizing: 'border-box',
+      }}
+    >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Orbit size={14} color="var(--accent)" style={{ animation: 'panelSpin 2s linear infinite', flexShrink: 0 }} />
+          <Orbit
+            size={14}
+            color="var(--accent)"
+            style={{ animation: 'panelSpin 2s linear infinite', flexShrink: 0 }}
+          />
           <span style={{ fontWeight: 600 }}>{message || 'Thinking...'}</span>
         </div>
-        <button onClick={onTerminate} title="Terminate pipeline" style={{
-          display: 'flex', alignItems: 'center', gap: 4,
-          background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)',
-          color: '#f87171', padding: '3px 8px', cursor: 'pointer', fontSize: 11, fontWeight: 600, flexShrink: 0,
-        }}>
+        <button
+          onClick={onTerminate}
+          title="Terminate pipeline"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            background: 'rgba(239,68,68,0.15)',
+            border: '1px solid rgba(239,68,68,0.4)',
+            color: '#f87171',
+            padding: '3px 8px',
+            cursor: 'pointer',
+            fontSize: 11,
+            fontWeight: 600,
+            flexShrink: 0,
+          }}
+        >
           <Square size={10} fill="#f87171" strokeWidth={0} /> Stop
         </button>
       </div>
       {latestRunState && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           {latestRunState.provider && (
-            <span style={{
-              fontSize: 9, padding: '2px 6px', background: 'rgba(34,211,238,0.1)',
-              color: 'var(--accent)', border: '1px solid rgba(34,211,238,0.2)',
-            }}>
+            <span
+              style={{
+                fontSize: 9,
+                padding: '2px 6px',
+                background: 'rgba(34,211,238,0.1)',
+                color: 'var(--accent)',
+                border: '1px solid rgba(34,211,238,0.2)',
+              }}
+            >
               {latestRunState.provider}:{latestRunState.model?.split('/').pop() || '?'}
             </span>
           )}
@@ -325,17 +986,86 @@ function ThinkingIndicator({ message, latestRunState, activeStep, onTerminate })
   );
 }
 
+function GroupReviewItem({ groupId, files, meta, isSelected, onToggle }) {
+  return (
+    <div
+      style={{
+        background: 'rgba(15,23,42,0.6)',
+        border: '1px solid rgba(147,197,253,0.18)',
+        padding: '8px 10px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 6,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={onToggle}
+          style={{ cursor: 'pointer' }}
+        />
+        <span style={{ fontSize: 11, fontWeight: 700, color: '#bfdbfe', letterSpacing: '0.04em' }}>
+          {groupId.toUpperCase()}
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, paddingLeft: 22 }}>
+        {files.map((file) => (
+          <span
+            key={file}
+            style={{
+              fontSize: 10,
+              padding: '2px 6px',
+              color: '#dbeafe',
+              background: 'rgba(0,0,0,0.4)',
+              border: '1px solid rgba(147,197,253,0.1)',
+            }}
+          >
+            {file}
+            {meta[file]?.model && (
+              <span style={{ opacity: 0.6, marginLeft: 4, fontSize: 8 }}>
+                via {meta[file].model}
+              </span>
+            )}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /* ────────────────────────── Main Panel ────────────────────────── */
 
 export default function AIPanel() {
   const {
-    connect, disconnect, isConnected, messages, isThinking, thinkingMessage,
-    sendPrompt, terminate, activeTransactionId, activeTransactionFiles,
-    approveTransaction, rejectTransaction, currentPlan, approvePlan, rejectPlan,
-    chats, activeChatId, loadChats, createChat, switchChat, isChatLoading,
-    latestRunState, controlPlane, loadControlPlane, activeTransactionMeta,
-    pipelinePhases, activeStep,
+    connect,
+    disconnect,
+    isConnected,
+    messages,
+    isThinking,
+    thinkingMessage,
+    sendPrompt,
+    terminate,
+    activeTransactionId,
+    activeTransactionFiles,
+    approveTransaction,
+    rejectTransaction,
+    currentPlan,
+    approvePlan,
+    rejectPlan,
+    chats,
+    activeChatId,
+    loadChats,
+    createChat,
+    switchChat,
+    isChatLoading,
+    latestRunState,
+    controlPlane,
+    loadControlPlane,
+    activeTransactionMeta,
+    pipelinePhases,
+    activeStep,
+    finalizeDiff,
   } = useAgentStore();
   const activeFile = useEditorStore((s) => s.activeFile);
   const source = useWorkspaceAccessStore((s) => s.source);
@@ -343,54 +1073,108 @@ export default function AIPanel() {
   const [inputMsg, setInputMsg] = useState('');
   const messagesEndRef = useRef(null);
   const [indexStatus, setIndexStatus] = useState({
-    chunksStored: 0, workspaceId: 'default', inventoryCount: 0,
-    embeddingOk: false, chromaOk: false, embeddingInfo: null,
-    lastUpdated: '', loading: false, error: '',
+    chunksStored: 0,
+    workspaceId: 'default',
+    inventoryCount: 0,
+    embeddingOk: false,
+    chromaOk: false,
+    embeddingInfo: null,
+    lastUpdated: '',
+    loading: false,
+    error: '',
   });
 
-  useEffect(() => { connect(); return () => disconnect(); }, [connect, disconnect]);
+  const [unselectedGroups, setUnselectedGroups] = useState(new Set());
+
   useEffect(() => {
-    if (isConnected) { loadChats(); loadControlPlane(); }
+    if (!activeTransactionId) {
+      setUnselectedGroups(new Set());
+    }
+  }, [activeTransactionId]);
+
+  const handleApproveSelected = async () => {
+    const acceptedPaths = activeTransactionFiles.filter((file) => {
+      const groupId = activeTransactionMeta[file]?.fileGroupId || 'ungrouped';
+      return !unselectedGroups.has(groupId);
+    });
+    const rejectedPaths = activeTransactionFiles.filter((file) => {
+      const groupId = activeTransactionMeta[file]?.fileGroupId || 'ungrouped';
+      return unselectedGroups.has(groupId);
+    });
+
+    await finalizeDiff({ acceptedPaths, rejectedPaths });
+  };
+
+  useEffect(() => {
+    connect();
+    return () => disconnect();
+  }, [connect, disconnect]);
+  useEffect(() => {
+    if (isConnected) {
+      loadChats();
+      loadControlPlane();
+    }
   }, [isConnected, loadChats, loadControlPlane]);
 
   useEffect(() => {
     let timer = null;
     const refresh = async () => {
       try {
-        setIndexStatus(s => ({ ...s, loading: true, error: '' }));
+        setIndexStatus((s) => ({ ...s, loading: true, error: '' }));
         const res = await fetch(`${API_URL}/api/rag/status`);
         if (!res.ok) throw new Error(`Status ${res.status}`);
         const data = await res.json();
-        setIndexStatus(s => ({
-          ...s, chunksStored: data.chunksStored || 0, workspaceId: data.workspaceId || 'default',
-          inventoryCount: data.inventoryCount || 0, embeddingOk: Boolean(data.embeddingOk),
-          chromaOk: Boolean(data.chromaOk), embeddingInfo: data.embeddingInfo || null,
-          lastUpdated: new Date().toLocaleTimeString(), loading: false, error: '',
+        setIndexStatus((s) => ({
+          ...s,
+          chunksStored: data.chunksStored || 0,
+          workspaceId: data.workspaceId || 'default',
+          inventoryCount: data.inventoryCount || 0,
+          embeddingOk: Boolean(data.embeddingOk),
+          chromaOk: Boolean(data.chromaOk),
+          embeddingInfo: data.embeddingInfo || null,
+          lastUpdated: new Date().toLocaleTimeString(),
+          loading: false,
+          error: '',
         }));
       } catch (err) {
-        setIndexStatus(s => ({ ...s, loading: false, error: err.message || 'Failed to load status' }));
+        setIndexStatus((s) => ({
+          ...s,
+          loading: false,
+          error: err.message || 'Failed to load status',
+        }));
       }
     };
-    if (isConnected) { refresh(); timer = setInterval(refresh, 15000); }
-    return () => { if (timer) clearInterval(timer); };
+    if (isConnected) {
+      refresh();
+      timer = setInterval(refresh, 15000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
   }, [isConnected]);
 
   const handleReindex = async () => {
     try {
-      setIndexStatus(s => ({ ...s, loading: true, error: '' }));
+      setIndexStatus((s) => ({ ...s, loading: true, error: '' }));
       const res = await fetch(`${API_URL}/api/rag/index`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ incremental: true }),
       });
       if (!res.ok) throw new Error(`Index failed (${res.status})`);
       const data = await res.json();
-      setIndexStatus(s => ({
-        ...s, chunksStored: data?.result?.newChunks ? s.chunksStored + data.result.newChunks : s.chunksStored,
+      setIndexStatus((s) => ({
+        ...s,
+        chunksStored: data?.result?.newChunks
+          ? s.chunksStored + data.result.newChunks
+          : s.chunksStored,
         workspaceId: data.workspaceId || s.workspaceId,
-        lastUpdated: new Date().toLocaleTimeString(), loading: false, error: '',
+        lastUpdated: new Date().toLocaleTimeString(),
+        loading: false,
+        error: '',
       }));
     } catch (err) {
-      setIndexStatus(s => ({ ...s, loading: false, error: err.message || 'Index failed' }));
+      setIndexStatus((s) => ({ ...s, loading: false, error: err.message || 'Index failed' }));
     }
   };
 
@@ -406,27 +1190,44 @@ export default function AIPanel() {
   };
 
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', height: '100%',
-      background: 'linear-gradient(180deg, color-mix(in srgb, var(--panel-bg) 90%, #0b1220) 0%, #090d14 100%)',
-    }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        background:
+          'linear-gradient(180deg, color-mix(in srgb, var(--panel-bg) 90%, #0b1220) 0%, #090d14 100%)',
+      }}
+    >
       <style>{`
         @keyframes blink { 50% { opacity: 0; } }
         @keyframes panelSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
       `}</style>
 
       {/* Header */}
-      <div style={{
-        padding: '14px 18px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-        borderBottom: '1px solid var(--panel-border)', background: 'rgba(8,12,18,0.9)',
-      }}>
+      <div
+        style={{
+          padding: '14px 18px 12px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          borderBottom: '1px solid var(--panel-border)',
+          background: 'rgba(8,12,18,0.9)',
+        }}
+      >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Cpu size={18} color="var(--accent)" strokeWidth={2} />
-            <h2 style={{
-              fontSize: 14, fontWeight: 700, margin: 0, color: 'var(--text-primary)',
-              letterSpacing: '0.08em', textTransform: 'uppercase',
-            }}>
+            <h2
+              style={{
+                fontSize: 14,
+                fontWeight: 700,
+                margin: 0,
+                color: 'var(--text-primary)',
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+              }}
+            >
               AI Agent
             </h2>
           </div>
@@ -436,11 +1237,15 @@ export default function AIPanel() {
           <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{source.description}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingTop: 4 }}>
-          <div style={{
-            width: 8, height: 8, borderRadius: '50%',
-            background: isConnected ? '#10b981' : '#ef4444',
-            boxShadow: `0 0 8px ${isConnected ? '#10b981' : '#ef4444'}`,
-          }} />
+          <div
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: isConnected ? '#10b981' : '#ef4444',
+              boxShadow: `0 0 8px ${isConnected ? '#10b981' : '#ef4444'}`,
+            }}
+          />
           <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>
             {isConnected ? 'ONLINE' : 'OFFLINE'}
           </span>
@@ -448,23 +1253,50 @@ export default function AIPanel() {
       </div>
 
       {/* Chat selector */}
-      <div style={{
-        padding: '10px 14px', borderBottom: '1px solid var(--panel-border)', background: 'rgba(0,0,0,0.2)',
-        display: 'flex', alignItems: 'center', gap: 8,
-      }}>
-        <select value={activeChatId || ''} onChange={e => switchChat(e.target.value)}
-          disabled={isChatLoading || !isConnected} style={{
-            flex: 1, background: 'var(--app-bg)', border: '1px solid var(--panel-border)',
-            color: 'var(--text-primary)', padding: '6px 8px', fontSize: 12,
-          }}>
+      <div
+        style={{
+          padding: '10px 14px',
+          borderBottom: '1px solid var(--panel-border)',
+          background: 'rgba(0,0,0,0.2)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+        }}
+      >
+        <select
+          value={activeChatId || ''}
+          onChange={(e) => switchChat(e.target.value)}
+          disabled={isChatLoading || !isConnected}
+          style={{
+            flex: 1,
+            background: 'var(--app-bg)',
+            border: '1px solid var(--panel-border)',
+            color: 'var(--text-primary)',
+            padding: '6px 8px',
+            fontSize: 12,
+          }}
+        >
           {chats.length === 0 && <option value="">No chats</option>}
-          {chats.map(c => <option key={c.chatId} value={c.chatId}>{c.title || 'Untitled'}</option>)}
+          {chats.map((c) => (
+            <option key={c.chatId} value={c.chatId}>
+              {c.title || 'Untitled'}
+            </option>
+          ))}
         </select>
-        <button onClick={createChat} disabled={!isConnected || isChatLoading} style={{
-          background: 'var(--accent)', color: '#000', border: 'none', padding: '6px 10px',
-          fontSize: 11, fontWeight: 700, letterSpacing: '0.06em',
-          cursor: !isConnected || isChatLoading ? 'not-allowed' : 'pointer',
-        }}>
+        <button
+          onClick={createChat}
+          disabled={!isConnected || isChatLoading}
+          style={{
+            background: 'var(--accent)',
+            color: '#000',
+            border: 'none',
+            padding: '6px 10px',
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: '0.06em',
+            cursor: !isConnected || isChatLoading ? 'not-allowed' : 'pointer',
+          }}
+        >
           New
         </button>
       </div>
@@ -474,17 +1306,27 @@ export default function AIPanel() {
 
       {/* Provider Health */}
       {controlPlane?.health && (
-        <div style={{
-          padding: '8px 14px', borderBottom: '1px solid var(--panel-border)', background: 'rgba(3,7,18,0.6)',
-          display: 'flex', gap: 6, flexWrap: 'wrap',
-        }}>
+        <div
+          style={{
+            padding: '8px 14px',
+            borderBottom: '1px solid var(--panel-border)',
+            background: 'rgba(3,7,18,0.6)',
+            display: 'flex',
+            gap: 6,
+            flexWrap: 'wrap',
+          }}
+        >
           {Object.entries(controlPlane.health).map(([provider, state]) => (
-            <span key={provider} style={{
-              fontSize: 9, padding: '3px 6px',
-              color: state.availabilityState === 'healthy' ? '#4ade80' : '#fbbf24',
-              border: `1px solid ${state.availabilityState === 'healthy' ? 'rgba(16,185,129,0.2)' : 'rgba(251,191,36,0.2)'}`,
-              background: 'rgba(15,23,42,0.5)',
-            }}>
+            <span
+              key={provider}
+              style={{
+                fontSize: 9,
+                padding: '3px 6px',
+                color: state.availabilityState === 'healthy' ? '#4ade80' : '#fbbf24',
+                border: `1px solid ${state.availabilityState === 'healthy' ? 'rgba(16,185,129,0.2)' : 'rgba(251,191,36,0.2)'}`,
+                background: 'rgba(15,23,42,0.5)',
+              }}
+            >
               {provider}: {state.availabilityState}
             </span>
           ))}
@@ -492,83 +1334,155 @@ export default function AIPanel() {
       )}
 
       {/* Index Status */}
-      <div style={{
-        padding: '8px 14px', borderBottom: '1px solid var(--panel-border)', background: 'rgba(0,0,0,0.18)',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
-      }}>
+      <div
+        style={{
+          padding: '8px 14px',
+          borderBottom: '1px solid var(--panel-border)',
+          background: 'rgba(0,0,0,0.18)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+        }}
+      >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)' }}>
+          <span
+            style={{
+              fontSize: 10,
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              color: 'var(--text-muted)',
+            }}
+          >
             Index
           </span>
           <span style={{ fontSize: 11, color: 'var(--text-primary)' }}>
             {indexStatus.chunksStored} chunks / {indexStatus.inventoryCount} files
           </span>
         </div>
-        <button onClick={handleReindex} disabled={indexStatus.loading || !isConnected} style={{
-          background: indexStatus.loading || !isConnected ? 'var(--panel-border)' : 'var(--accent)',
-          color: indexStatus.loading || !isConnected ? 'var(--text-muted)' : '#000',
-          border: 'none', padding: '4px 10px', fontSize: 10, fontWeight: 700, letterSpacing: '0.06em',
-          cursor: indexStatus.loading || !isConnected ? 'not-allowed' : 'pointer',
-        }}>
+        <button
+          onClick={handleReindex}
+          disabled={indexStatus.loading || !isConnected}
+          style={{
+            background:
+              indexStatus.loading || !isConnected ? 'var(--panel-border)' : 'var(--accent)',
+            color: indexStatus.loading || !isConnected ? 'var(--text-muted)' : '#000',
+            border: 'none',
+            padding: '4px 10px',
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: '0.06em',
+            cursor: indexStatus.loading || !isConnected ? 'not-allowed' : 'pointer',
+          }}
+        >
           {indexStatus.loading ? '...' : 'Reindex'}
         </button>
       </div>
 
       {/* Messages Area */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: '18px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 14,
+        }}
+      >
         {messages.length === 0 && (
-          <div style={{
-            margin: 'auto', display: 'grid', gap: 12, padding: '24px',
-            border: '1px solid rgba(148,163,184,0.18)', background: 'rgba(15,23,42,0.65)',
-          }}>
-            <div style={{
-              width: 44, height: 44, display: 'grid', placeItems: 'center',
-              background: 'rgba(34,211,238,0.12)', color: 'var(--accent)',
-            }}>
+          <div
+            style={{
+              margin: 'auto',
+              display: 'grid',
+              gap: 12,
+              padding: '24px',
+              border: '1px solid rgba(148,163,184,0.18)',
+              background: 'rgba(15,23,42,0.65)',
+            }}
+          >
+            <div
+              style={{
+                width: 44,
+                height: 44,
+                display: 'grid',
+                placeItems: 'center',
+                background: 'rgba(34,211,238,0.12)',
+                color: 'var(--accent)',
+              }}
+            >
               <Orbit size={22} />
             </div>
             <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.6 }}>
-              Ask for a targeted edit, a refactor, or a patch. Review stays explicit before code is applied.
+              Ask for a targeted edit, a refactor, or a patch. Review stays explicit before code is
+              applied.
             </p>
           </div>
         )}
 
-        {messages.map(msg => (
-          <div key={msg.id} className="animate-in" style={{
-            display: 'flex', flexDirection: 'column',
-            alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start',
-          }}>
+        {messages.map((msg) => (
+          <div
+            key={msg.id}
+            className="animate-in"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start',
+            }}
+          >
             {/* Plan message */}
             {msg.type === 'plan' ? (
               <div style={{ width: '100%' }}>
-                <PlanCard data={msg.data} currentPlan={currentPlan} approvePlan={approvePlan} rejectPlan={rejectPlan} />
+                <PlanCard
+                  data={msg.data}
+                  currentPlan={currentPlan}
+                  approvePlan={approvePlan}
+                  rejectPlan={rejectPlan}
+                />
               </div>
             ) : msg.type === 'code' ? (
               <div style={{ width: '100%' }}>
                 <FileChangeBadge msg={msg} />
               </div>
             ) : (
-              <div style={{
-                background: msg.role === 'user' ? 'var(--accent)' : 'var(--app-bg)',
-                color: msg.role === 'user' ? '#000000' : 'var(--text-primary)',
-                padding: '12px 16px', maxWidth: '90%', wordBreak: 'break-word',
-                fontSize: 13.5, lineHeight: 1.6,
-                border: msg.role === 'user' ? '1px solid var(--accent-dim)' : '1px solid var(--panel-border)',
-                borderLeft: msg.role === 'user' ? '1px solid var(--accent-dim)' : '4px solid var(--accent)',
-                boxShadow: msg.role === 'user' ? '4px 4px 0px rgba(0,0,0,1)' : 'none',
-                ...(msg.type === 'error' && {
-                  color: 'var(--red)', border: '1px solid var(--red)',
-                  borderLeft: '4px solid var(--red)', background: 'var(--app-bg)',
-                }),
-              }}>
+              <div
+                style={{
+                  background: msg.role === 'user' ? 'var(--accent)' : 'var(--app-bg)',
+                  color: msg.role === 'user' ? '#000000' : 'var(--text-primary)',
+                  padding: '12px 16px',
+                  maxWidth: '90%',
+                  wordBreak: 'break-word',
+                  fontSize: 13.5,
+                  lineHeight: 1.6,
+                  border:
+                    msg.role === 'user'
+                      ? '1px solid var(--accent-dim)'
+                      : '1px solid var(--panel-border)',
+                  borderLeft:
+                    msg.role === 'user' ? '1px solid var(--accent-dim)' : '4px solid var(--accent)',
+                  boxShadow: msg.role === 'user' ? '4px 4px 0px rgba(0,0,0,1)' : 'none',
+                  ...(msg.type === 'error' && {
+                    color: 'var(--red)',
+                    border: '1px solid var(--red)',
+                    borderLeft: '4px solid var(--red)',
+                    background: 'var(--app-bg)',
+                  }),
+                }}
+              >
                 <div style={{ position: 'relative' }}>
                   <span style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</span>
                   {msg.isStreaming && (
-                    <span style={{
-                      display: 'inline-block', width: '8px', height: '14px',
-                      background: '#cbd5e1', marginLeft: '4px', verticalAlign: 'middle',
-                      animation: 'blink 1s step-end infinite',
-                    }} />
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        width: '8px',
+                        height: '14px',
+                        background: '#cbd5e1',
+                        marginLeft: '4px',
+                        verticalAlign: 'middle',
+                        animation: 'blink 1s step-end infinite',
+                      }}
+                    />
                   )}
                 </div>
               </div>
@@ -577,96 +1491,209 @@ export default function AIPanel() {
         ))}
 
         {isThinking && (
-          <ThinkingIndicator message={thinkingMessage} latestRunState={latestRunState}
-            activeStep={activeStep} onTerminate={terminate} />
+          <ThinkingIndicator
+            message={thinkingMessage}
+            latestRunState={latestRunState}
+            activeStep={activeStep}
+            onTerminate={terminate}
+          />
         )}
         <div ref={messagesEndRef} />
       </div>
 
       {/* Transaction Review */}
       {activeTransactionId && (
-        <div style={{
-          margin: '0 18px 16px', padding: '14px', background: 'rgba(59,130,246,0.12)',
-          border: '1px solid rgba(96,165,250,0.28)', display: 'grid', gap: 10,
-        }}>
+        <div
+          style={{
+            margin: '0 18px 16px',
+            padding: '14px',
+            background: 'rgba(59,130,246,0.12)',
+            border: '1px solid rgba(96,165,250,0.28)',
+            display: 'grid',
+            gap: 10,
+          }}
+        >
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
             <div style={{ display: 'grid', gap: 4 }}>
-              <span style={{ fontSize: 11, letterSpacing: '0.08em', color: '#bfdbfe' }}>PENDING REVIEW</span>
+              <span style={{ fontSize: 11, letterSpacing: '0.08em', color: '#bfdbfe' }}>
+                PENDING REVIEW
+              </span>
               <span style={{ fontSize: 12, color: '#dbeafe' }}>
                 Ref {activeTransactionId.substring(0, 6)} with {activeTransactionFiles.length} file
                 {activeTransactionFiles.length === 1 ? '' : 's'}
               </span>
             </div>
-            <button onClick={() => {
-              const tx = diffService.getTransaction(activeTransactionId);
-              const first = tx?.patchedPaths?.[0];
-              if (first) useEditorStore.getState().openFile(first);
-            }} style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              border: '1px solid rgba(147,197,253,0.35)', background: 'rgba(15,23,42,0.38)',
-              color: '#dbeafe', padding: '8px 12px', cursor: 'pointer',
-            }}>
+            <button
+              onClick={() => {
+                const tx = diffService.getTransaction(activeTransactionId);
+                const first = tx?.patchedPaths?.[0];
+                if (first) useEditorStore.getState().openFile(first);
+              }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                border: '1px solid rgba(147,197,253,0.35)',
+                background: 'rgba(15,23,42,0.38)',
+                color: '#dbeafe',
+                padding: '8px 12px',
+                cursor: 'pointer',
+              }}
+            >
               <Eye size={14} strokeWidth={3} /> Review
             </button>
           </div>
 
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {activeTransactionFiles.map(file => (
-              <span key={file} style={{
-                fontSize: 11, padding: '3px 8px', color: '#dbeafe',
-                background: 'rgba(15,23,42,0.48)', border: '1px solid rgba(147,197,253,0.18)',
-              }}>
-                {file}
-                {activeTransactionMeta[file]?.model && (
-                  <span style={{ opacity: 0.6, marginLeft: 4, fontSize: 9 }}>
-                    via {activeTransactionMeta[file].model}
-                  </span>
-                )}
-              </span>
-            ))}
+          <div style={{ display: 'grid', gap: 8, marginTop: 4 }}>
+            {(() => {
+              // Group files by fileGroupId
+              const filesByGroup = {};
+              activeTransactionFiles.forEach((file) => {
+                const groupId = activeTransactionMeta[file]?.fileGroupId || 'ungrouped';
+                if (!filesByGroup[groupId]) filesByGroup[groupId] = [];
+                filesByGroup[groupId].push(file);
+              });
+
+              return Object.entries(filesByGroup).map(([groupId, files]) => {
+                // Determine group selection state. We'll use local state to track UNSELECTED groups.
+                // But for now, since we didn't add the useState hook to AIPanel, we will add a
+                // simple checkbox using DOM or just build a quick wrapper here if needed.
+                // Wait, we need unselectedGroups state. Let's just create a functional component inline
+                // or just use window.__unselectedGroups (hacky) or add state.
+                return (
+                  <GroupReviewItem
+                    key={groupId}
+                    groupId={groupId}
+                    files={files}
+                    meta={activeTransactionMeta}
+                    isSelected={!unselectedGroups.has(groupId)}
+                    onToggle={() => {
+                      setUnselectedGroups((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(groupId)) next.delete(groupId);
+                        else next.add(groupId);
+                        return next;
+                      });
+                    }}
+                  />
+                );
+              });
+            })()}
           </div>
 
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={approveTransaction} style={{
-              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-              background: '#10b981', color: '#041014', border: 'none', padding: '9px 12px',
-              cursor: 'pointer', fontSize: 12, fontWeight: 700,
-            }}>
-              <Check size={14} strokeWidth={3} /> Apply & Save
+          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            <button
+              onClick={handleApproveSelected}
+              disabled={
+                activeTransactionFiles.length > 0 &&
+                unselectedGroups.size ===
+                  new Set(
+                    activeTransactionFiles.map(
+                      (f) => activeTransactionMeta[f]?.fileGroupId || 'ungrouped'
+                    )
+                  ).size
+              }
+              style={{
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                background: '#10b981',
+                color: '#041014',
+                border: 'none',
+                padding: '9px 12px',
+                cursor: 'pointer',
+                fontSize: 12,
+                fontWeight: 700,
+                opacity:
+                  activeTransactionFiles.length > 0 &&
+                  unselectedGroups.size ===
+                    new Set(
+                      activeTransactionFiles.map(
+                        (f) => activeTransactionMeta[f]?.fileGroupId || 'ungrouped'
+                      )
+                    ).size
+                    ? 0.5
+                    : 1,
+              }}
+            >
+              <Check size={14} strokeWidth={3} /> Apply Selected
             </button>
-            <button onClick={rejectTransaction} style={{
-              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-              background: 'transparent', color: '#e2e8f0', border: '1px solid var(--panel-border)',
-              padding: '9px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 600,
-            }}>
-              <X size={14} strokeWidth={2} /> Discard
+            <button
+              onClick={rejectTransaction}
+              style={{
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                background: 'transparent',
+                color: '#e2e8f0',
+                border: '1px solid var(--panel-border)',
+                padding: '9px 12px',
+                cursor: 'pointer',
+                fontSize: 12,
+                fontWeight: 600,
+              }}
+            >
+              <X size={14} strokeWidth={2} /> Discard All
             </button>
           </div>
         </div>
       )}
 
       {/* Input */}
-      <div style={{
-        padding: '14px 18px 18px', borderTop: '1px solid var(--panel-border)',
-        background: 'rgba(7,10,16,0.92)',
-      }}>
-        <form onSubmit={handleSubmit} style={{
-          display: 'flex', gap: 10, background: 'rgba(15,23,42,0.9)',
-          border: '1px solid var(--panel-border)', padding: '8px 8px 8px 14px',
-        }}>
-          <input type="text" value={inputMsg} onChange={e => setInputMsg(e.target.value)}
+      <div
+        style={{
+          padding: '14px 18px 18px',
+          borderTop: '1px solid var(--panel-border)',
+          background: 'rgba(7,10,16,0.92)',
+        }}
+      >
+        <form
+          onSubmit={handleSubmit}
+          style={{
+            display: 'flex',
+            gap: 10,
+            background: 'rgba(15,23,42,0.9)',
+            border: '1px solid var(--panel-border)',
+            padding: '8px 8px 8px 14px',
+          }}
+        >
+          <input
+            type="text"
+            value={inputMsg}
+            onChange={(e) => setInputMsg(e.target.value)}
             disabled={isThinking || !isConnected}
             placeholder={isConnected ? 'Ask for a precise edit...' : 'Connecting...'}
             style={{
-              flex: 1, background: 'transparent', border: 'none', color: 'var(--text-primary)',
-              outline: 'none', fontSize: 14,
-            }} />
-          <button type="submit" disabled={isThinking || !inputMsg.trim() || !isConnected} style={{
-            background: isThinking || !inputMsg.trim() || !isConnected ? 'var(--panel-border)' : 'var(--accent)',
-            color: isThinking || !inputMsg.trim() || !isConnected ? 'var(--text-muted)' : '#041014',
-            border: 'none', width: 38, height: 38, display: 'grid', placeItems: 'center',
-            cursor: isThinking || !inputMsg.trim() || !isConnected ? 'not-allowed' : 'pointer',
-          }}>
+              flex: 1,
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-primary)',
+              outline: 'none',
+              fontSize: 14,
+            }}
+          />
+          <button
+            type="submit"
+            disabled={isThinking || !inputMsg.trim() || !isConnected}
+            style={{
+              background:
+                isThinking || !inputMsg.trim() || !isConnected
+                  ? 'var(--panel-border)'
+                  : 'var(--accent)',
+              color:
+                isThinking || !inputMsg.trim() || !isConnected ? 'var(--text-muted)' : '#041014',
+              border: 'none',
+              width: 38,
+              height: 38,
+              display: 'grid',
+              placeItems: 'center',
+              cursor: isThinking || !inputMsg.trim() || !isConnected ? 'not-allowed' : 'pointer',
+            }}
+          >
             <Send size={16} strokeWidth={3} />
           </button>
         </form>
