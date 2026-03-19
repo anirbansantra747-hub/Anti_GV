@@ -611,4 +611,4 @@ MIT — Free and open source.
 
 ---
 
-_Built with ❤️ for the hackathon. Total infrastructure cost: $0._
+\_Built with ❤️ for the hackathon. Total infrastructure cost: $0.69

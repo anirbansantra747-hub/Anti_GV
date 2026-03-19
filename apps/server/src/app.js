@@ -38,11 +38,13 @@ import ragRoutes from './routes/rag.js';
 import fsRoutes from './routes/fs.js';
 import workspaceRoutes from './routes/workspace.js';
 import chatRoutes from './routes/chats.js';
+import agentRoutes from './routes/agent.js';
 
 app.use('/api/rag', ragRoutes);
 app.use('/api/fs', fsRoutes);
 app.use('/api/workspace', workspaceRoutes);
 app.use('/api/chats', chatRoutes);
+app.use('/api/agent', agentRoutes);
 
 // Socket.io
 io.on('connection', (socket) => {

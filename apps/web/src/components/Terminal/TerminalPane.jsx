@@ -73,6 +73,7 @@ export default function TerminalPane() {
   const [isRunning, setIsRunning] = useState(false);
   const [problems, setProblems] = useState([]);
   const [stdin, setStdin] = useState('');
+  const [selectedShell, setSelectedShell] = useState('Default');
 
   // ─── xterm.js setup ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -119,7 +120,14 @@ export default function TerminalPane() {
     xtermRef.current = term;
     fitAddonRef.current = fitAddon;
 
-    socket.emit('terminal:spawn', { cols: term.cols, rows: term.rows }, (response) => {
+    const spawnPayload = {
+      cols: term.cols,
+      rows: term.rows,
+      // If selectedShell is 'Default', we omit it to let the backend choose based on the OS
+      ...(selectedShell !== 'Default' ? { shell: selectedShell } : {}),
+    };
+
+    socket.emit('terminal:spawn', spawnPayload, (response) => {
       if (response?.success) {
         setIsSpawned(true);
         // If we got a workspace path, use it to change directory
@@ -218,7 +226,13 @@ export default function TerminalPane() {
           xtermRef.current = newTerm;
           fitAddonRef.current = newFitAddon;
 
-          socket.emit('terminal:spawn', { cols: newTerm.cols, rows: newTerm.rows }, (response) => {
+          const workspaceSpawnPayload = {
+            cols: newTerm.cols,
+            rows: newTerm.rows,
+            ...(selectedShell !== 'Default' ? { shell: selectedShell } : {}),
+          };
+
+          socket.emit('terminal:spawn', workspaceSpawnPayload, (response) => {
             if (response?.success) {
               setIsSpawned(true);
               console.log(
@@ -266,7 +280,7 @@ export default function TerminalPane() {
       ro?.disconnect();
       term.dispose();
     };
-  }, [socket]);
+  }, [socket, selectedShell]);
 
   // ─── Piston socket output + problems listeners ──────────────────────────────
   useEffect(() => {
@@ -284,14 +298,24 @@ export default function TerminalPane() {
     };
     const onExecProblems = ({ markers }) => setProblems(markers || []);
 
+    const onAgentTerminalRun = (payload) => {
+      if (payload?.command) {
+        console.log(`[TerminalPane] AI requested to run command: ${payload.command}`);
+        setActiveTab('TERMINAL');
+        socket.emit('terminal:input', { input: `${payload.command}\r` });
+      }
+    };
+
     socket.on('exec:output', onExecOutput);
     socket.on('exec:done', onExecDone);
     socket.on('exec:problems', onExecProblems);
+    socket.on('agent:terminal:run', onAgentTerminalRun);
 
     return () => {
       socket.off('exec:output', onExecOutput);
       socket.off('exec:done', onExecDone);
       socket.off('exec:problems', onExecProblems);
+      socket.off('agent:terminal:run', onAgentTerminalRun);
     };
   }, [socket]);
 
@@ -392,6 +416,41 @@ export default function TerminalPane() {
 
         {/* Spacer */}
         <div style={{ flex: 1 }} />
+
+        {/* Shell Picker */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            paddingRight: '8px',
+            borderRight: '1px solid var(--panel-border)',
+            marginRight: '8px',
+          }}
+        >
+          <select
+            value={selectedShell}
+            onChange={(e) => setSelectedShell(e.target.value)}
+            style={{
+              background: 'transparent',
+              color: 'var(--text-muted)',
+              border: 'none',
+              outline: 'none',
+              fontSize: 11,
+              fontWeight: 700,
+              fontFamily: 'var(--font-ui)',
+              letterSpacing: '0.05em',
+              textTransform: 'uppercase',
+              cursor: 'pointer',
+              padding: '4px',
+            }}
+          >
+            <option value="Default">Default</option>
+            <option value="bash">Bash</option>
+            <option value="powershell.exe">PowerShell</option>
+            <option value="cmd.exe">CMD</option>
+            <option value="node">Node</option>
+          </select>
+        </div>
 
         {/* Run Button */}
         <button

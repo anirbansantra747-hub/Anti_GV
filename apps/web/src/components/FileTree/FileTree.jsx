@@ -10,13 +10,20 @@
  *  - File tree with react-arborist when files exist
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Tree } from 'react-arborist';
-import { Search, X } from 'lucide-react';
+import { Search, X, RefreshCw, FilePlus, FolderPlus } from 'lucide-react';
 import { useFileSystemStore } from '../../stores/fileSystemStore.js';
-import { useEditorStore } from '../../stores/editorStore.js';
 import { useAgentStore } from '../../stores/agentStore.js';
-import { handleDrop } from '../../services/localFileService.js';
+import { useEditorStore } from '../../stores/editorStore.js';
+import {
+  handleDrop,
+  openFilesViaInput,
+  supportsDirectoryPicker,
+  openWorkspaceFolder,
+} from '../../services/localFileService.js';
+import { fileSystemAPI } from '../../services/fileSystemAPI.js';
+import { syncRealDiskToMemfs } from '../../services/initSyncService.js';
 import FileNode from './FileNode.jsx';
 import FileTreeActions from './FileTreeActions.jsx';
 import ExplorerMenu from './ExplorerMenu.jsx';
@@ -34,6 +41,7 @@ function toArboristNodes(nodes, parentPath = '') {
 
 export default function FileTree() {
   const treeData = useFileSystemStore((s) => s.treeData);
+  const workspaceRootPath = useAgentStore((s) => s.workspaceRootPath);
   const socket = useAgentStore((s) => s.socket);
   const [selectedPath, setSelectedPath] = useState(null); // reactive so FileTreeActions re-renders
   const [isDragOver, setIsDragOver] = useState(false);
@@ -43,6 +51,21 @@ export default function FileTree() {
 
   const rootChildren = treeData?.[0]?.children ?? [];
   const hasFiles = rootChildren.length > 0;
+  const hasOpenWorkspace = Boolean(workspaceRootPath);
+
+  const containerRef = useRef(null);
+  const [treeHeight, setTreeHeight] = useState(300);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setTreeHeight(entry.contentRect.height);
+      }
+    });
+    ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, [hasFiles]);
 
   // Filter tree nodes by search query
   const arboristData = useMemo(() => {
@@ -72,6 +95,71 @@ export default function FileTree() {
     useEditorStore.getState().openFile(node.id);
   };
 
+  const getParentPath = () => {
+    if (!selectedPath) return '';
+    const isFile = arboristData.some((n) => findNodeType(n, selectedPath) === 'file');
+    if (isFile) {
+      return selectedPath.substring(0, selectedPath.lastIndexOf('/'));
+    }
+    return selectedPath;
+  };
+
+  const findNodeType = (node, targetId) => {
+    if (node.id === targetId) return node.type;
+    if (node.children) {
+      for (const child of node.children) {
+        const res = findNodeType(child, targetId);
+        if (res) return res;
+      }
+    }
+    return null;
+  };
+
+  const handleNewFile = () => {
+    const name = window.prompt('New file name:');
+    if (!name?.trim()) return;
+    const parentPath = getParentPath();
+    const fullPath = `${parentPath}/${name.trim()}`.replace(/\/\//g, '/');
+
+    try {
+      fileSystemAPI.writeFile(fullPath, '', { sourceModule: 'UI' });
+      if (socket) {
+        socket.emit('fs:create', { path: fullPath, type: 'file' }, (res) => {
+          if (!res?.success) console.error('[FileTree] Disk file create failed:', res?.error);
+        });
+      }
+      useEditorStore.getState().openFile(fullPath);
+    } catch (err) {
+      console.error('[FileTree] File creation failed:', err);
+    }
+  };
+
+  const handleNewFolder = () => {
+    const name = window.prompt('New folder name:');
+    if (!name?.trim()) return;
+    const parentPath = getParentPath();
+    const fullPath = `${parentPath}/${name.trim()}`.replace(/\/\//g, '/');
+
+    try {
+      fileSystemAPI.mkdir(fullPath, { recursive: true }, 'UI');
+      if (socket) {
+        socket.emit('fs:create', { path: fullPath, type: 'dir' }, (res) => {
+          if (!res?.success) console.error('[FileTree] Disk folder create failed:', res?.error);
+        });
+      }
+    } catch (err) {
+      console.error('[FileTree] Folder creation failed:', err);
+    }
+  };
+
+  const handleRefresh = async () => {
+    try {
+      await syncRealDiskToMemfs({ preferIDB: false, reset: false });
+    } catch (error) {
+      console.error('[FileTree] Refresh failed:', error);
+    }
+  };
+
   // ── Drag & Drop handlers ────────────────────────────────────────────────────
   const onDragOver = (e) => {
     e.preventDefault();
@@ -93,21 +181,6 @@ export default function FileTree() {
     } finally {
       setTimeout(() => setDropProgress(null), 400);
     }
-  };
-
-  const handleOpenFolder = () => {
-    if (!socket) {
-      console.error('[FileTree] Socket not connected');
-      return;
-    }
-    console.log('[FileTree] Emitting fs:pick_folder to open folder picker');
-    socket.emit('fs:pick_folder', {}, (response) => {
-      if (response?.success) {
-        console.log(`[FileTree] Folder opened successfully: ${response.newRoot}`);
-      } else if (!response?.canceled) {
-        console.error('[FileTree] Failed to open folder:', response?.error);
-      }
-    });
   };
 
   return (
@@ -145,10 +218,88 @@ export default function FileTree() {
         }}
       >
         <span>Explorer</span>
-        <ExplorerMenu
-          onNewFile={() => setInlineMode('file')}
-          onNewFolder={() => setInlineMode('folder')}
-        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <button
+            title="New File"
+            onClick={handleNewFile}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#94a3b8',
+              cursor: 'pointer',
+              padding: '2px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: '3px',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+              e.currentTarget.style.color = '#e2e8f0';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = '#94a3b8';
+            }}
+          >
+            <FilePlus size={14} />
+          </button>
+          <button
+            title="New Folder"
+            onClick={handleNewFolder}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#94a3b8',
+              cursor: 'pointer',
+              padding: '2px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: '3px',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+              e.currentTarget.style.color = '#e2e8f0';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = '#94a3b8';
+            }}
+          >
+            <FolderPlus size={14} />
+          </button>
+          <button
+            title="Refresh Explorer"
+            onClick={handleRefresh}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#94a3b8',
+              cursor: 'pointer',
+              padding: '2px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: '3px',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+              e.currentTarget.style.color = '#e2e8f0';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = '#94a3b8';
+            }}
+          >
+            <RefreshCw size={14} />
+          </button>
+          <ExplorerMenu
+            onNewFile={handleNewFile}
+            onNewFolder={handleNewFolder}
+            onRefresh={handleRefresh}
+          />
+        </div>
       </div>
 
       {/* ── Toolbar: New File, New Folder, Open File, Open Folder ────── */}
@@ -257,7 +408,7 @@ export default function FileTree() {
       )}
 
       {/* ── Main Content Area ───────────────────────────────────────────── */}
-      <div style={{ flex: 1, overflow: 'auto', paddingTop: 4 }}>
+      <div ref={containerRef} style={{ flex: 1, overflow: 'hidden', paddingTop: 4 }}>
         {!hasFiles ? (
           /* Empty state — no folder opened yet */
           <div
@@ -268,14 +419,22 @@ export default function FileTree() {
               flexDirection: 'column',
               alignItems: 'center',
               gap: 16,
+              overflowY: 'auto',
+              height: '100%',
             }}
           >
             <div style={{ fontSize: 48, opacity: 0.6 }}>📂</div>
             <p style={{ color: '#94a3b8', fontSize: 13, margin: 0, lineHeight: 1.5 }}>
-              You have not yet opened a folder.
+              {hasOpenWorkspace
+                ? 'This folder is open but currently empty.'
+                : 'You have not yet opened a folder.'}
             </p>
             <button
-              onClick={handleOpenFolder}
+              onClick={() => {
+                openWorkspaceFolder().catch((error) =>
+                  console.error('[FileTree] Open folder failed:', error)
+                );
+              }}
               style={{
                 background: '#0e639c',
                 color: '#ffffff',
@@ -306,6 +465,7 @@ export default function FileTree() {
             onSelect={handleSelect}
             openByDefault={!!searchQuery}
             width="100%"
+            height={treeHeight}
             indent={16}
             rowHeight={28}
             overscanCount={4}

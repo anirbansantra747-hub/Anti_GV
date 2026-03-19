@@ -1,41 +1,70 @@
-/**
- * OpenRouter API Client
- * OpenAI-compatible endpoint with access to many free models.
- * Used for: intent classification (fast/cheap)
- */
 import dotenv from 'dotenv';
+
 dotenv.config();
 
-const OPENROUTER_BASE = 'https://openrouter.ai/api/v1';
+const OPENROUTER_URL =
+  process.env.OPENROUTER_API_URL || 'https://openrouter.ai/api/v1/chat/completions';
 
-export const generateOpenRouterResponse = async (messages, options = {}) => {
+function getHeaders() {
   const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error('[OpenRouterClient] OPENROUTER_API_KEY not set');
-
-  const body = {
-    model: options.model || 'stepfun/step-3.5-flash',
-    messages,
-    temperature: options.temperature ?? 0.1,
-  };
-  if (options.max_tokens) body.max_tokens = options.max_tokens;
-  if (options.jsonMode) body.response_format = { type: 'json_object' };
-
-  const res = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://antigv.dev',
-      'X-Title': 'Anti_GV',
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`[OpenRouterClient] ${res.status}: ${err.substring(0, 200)}`);
+  if (!apiKey) {
+    throw new Error('OPENROUTER_API_KEY is not set.');
   }
 
-  const data = await res.json();
-  return data.choices[0]?.message?.content || '';
-};
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    'Content-Type': 'application/json',
+  };
+
+  if (process.env.OPENROUTER_HTTP_REFERER) {
+    headers['HTTP-Referer'] = process.env.OPENROUTER_HTTP_REFERER;
+  }
+  if (process.env.OPENROUTER_APP_NAME) {
+    headers['X-Title'] = process.env.OPENROUTER_APP_NAME;
+  }
+
+  return headers;
+}
+
+function buildPayload(messages, options = {}) {
+  const payload = {
+    messages,
+    model: options.model || 'openai/gpt-oss-20b:free',
+    temperature: options.temperature ?? 0.2,
+    max_tokens: options.max_tokens,
+  };
+
+  if (options.stream) payload.stream = true;
+  if (options.jsonMode) payload.response_format = { type: 'json_object' };
+
+  return payload;
+}
+
+export async function generateOpenRouterResponse(messages, options = {}) {
+  const response = await fetch(OPENROUTER_URL, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(buildPayload(messages, options)),
+  });
+
+  if (!response.ok) {
+    throw new Error(`OpenRouter API Error: ${response.status} - ${await response.text()}`);
+  }
+
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content || '';
+}
+
+export async function streamOpenRouterResponse(messages, options = {}) {
+  const response = await fetch(OPENROUTER_URL, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(buildPayload(messages, { ...options, stream: true })),
+  });
+
+  if (!response.ok) {
+    throw new Error(`OpenRouter API Error: ${response.status} - ${await response.text()}`);
+  }
+
+  return response.body;
+}

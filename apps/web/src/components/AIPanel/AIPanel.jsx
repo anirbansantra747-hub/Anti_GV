@@ -1,17 +1,1040 @@
 /* eslint-disable no-unused-vars */
 /**
  * @file AIPanel.jsx
- * @description AI panel with clearer review state and save-target context.
+ * @description Enhanced AI Agent panel with live pipeline timeline, structured plan cards,
+ *              file change badges, and rich thinking indicators.
  */
 
 import React, { useEffect, useState, useRef } from 'react';
-import { Send, Cpu, Check, X, Orbit, Eye, Square } from 'lucide-react';
+import {
+  Send,
+  Cpu,
+  Check,
+  X,
+  Orbit,
+  Eye,
+  Square,
+  FileCode,
+  FilePlus,
+  FileX,
+  Zap,
+  Shield,
+  AlertTriangle,
+  Clock,
+  ChevronDown,
+  ChevronRight,
+  Activity,
+} from 'lucide-react';
 import { useAgentStore } from '../../stores/agentStore';
 import { useEditorStore } from '../../stores/editorStore.js';
 import { useWorkspaceAccessStore } from '../../stores/workspaceAccessStore.js';
 import { diffService } from '../../services/diffService.js';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
+/* ────────────────────────── Sub-components ────────────────────────── */
+
+const PHASE_ORDER = [
+  'health',
+  'brief',
+  'intent',
+  'context',
+  'plan',
+  'validate',
+  'codegen',
+  'verification',
+  'done',
+];
+const PHASE_LABELS = {
+  health: 'Health Check',
+  brief: 'Task Brief',
+  intent: 'Intent',
+  context: 'Context',
+  plan: 'Planning',
+  validate: 'Validation',
+  codegen: 'Code Gen',
+  verification: 'Verify',
+  done: 'Complete',
+};
+
+function PipelineTimeline({ phases }) {
+  if (!phases || phases.length === 0) return null;
+
+  const phaseMap = {};
+  phases.forEach((p) => {
+    phaseMap[p.phase] = p;
+  });
+
+  return (
+    <div
+      style={{
+        padding: '10px 14px',
+        borderBottom: '1px solid var(--panel-border)',
+        background: 'rgba(3,7,18,0.85)',
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10,
+          textTransform: 'uppercase',
+          letterSpacing: '0.1em',
+          color: 'var(--text-muted)',
+          marginBottom: 8,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+        }}
+      >
+        <Activity size={12} /> Pipeline
+      </div>
+      <div style={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+        {PHASE_ORDER.map((key, i) => {
+          const phase = phaseMap[key];
+          const status = phase?.status || 'pending';
+          const isActive = status === 'running' || status === 'streaming';
+          const isDone = status === 'done';
+          const isError = status === 'blocked' || status === 'error';
+
+          const dotColor = isActive
+            ? 'var(--accent)'
+            : isDone
+              ? '#10b981'
+              : isError
+                ? '#ef4444'
+                : 'rgba(148,163,184,0.3)';
+          const labelColor = isActive
+            ? 'var(--accent)'
+            : isDone
+              ? '#4ade80'
+              : isError
+                ? '#f87171'
+                : 'var(--text-muted)';
+
+          return (
+            <React.Fragment key={key}>
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 3,
+                  minWidth: 48,
+                }}
+                title={
+                  phase
+                    ? `${phase.message || ''}\n${phase.provider || ''}:${phase.model || ''}`
+                    : 'Pending'
+                }
+              >
+                <div
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: '50%',
+                    background: dotColor,
+                    boxShadow: isActive ? `0 0 8px ${dotColor}` : 'none',
+                    transition: 'all 0.3s ease',
+                    animation: isActive ? 'panelSpin 2s linear infinite' : 'none',
+                  }}
+                />
+                <span
+                  style={{
+                    fontSize: 9,
+                    color: labelColor,
+                    fontWeight: isActive ? 700 : 500,
+                    textAlign: 'center',
+                  }}
+                >
+                  {PHASE_LABELS[key] || key}
+                </span>
+                {phase?.model && (
+                  <span
+                    style={{
+                      fontSize: 8,
+                      color: 'var(--text-muted)',
+                      maxWidth: 60,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {phase.model.split('/').pop()}
+                  </span>
+                )}
+              </div>
+              {i < PHASE_ORDER.length - 1 && (
+                <div
+                  style={{
+                    flex: '0 0 auto',
+                    width: 12,
+                    height: 1,
+                    background: isDone ? '#10b981' : 'rgba(148,163,184,0.2)',
+                    marginBottom: 18,
+                  }}
+                />
+              )}
+            </React.Fragment>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function RiskBadge({ level }) {
+  const config = {
+    low: {
+      bg: 'rgba(16,185,129,0.15)',
+      color: '#4ade80',
+      border: 'rgba(16,185,129,0.3)',
+      icon: Shield,
+    },
+    medium: {
+      bg: 'rgba(251,191,36,0.15)',
+      color: '#fbbf24',
+      border: 'rgba(251,191,36,0.3)',
+      icon: AlertTriangle,
+    },
+    high: {
+      bg: 'rgba(239,68,68,0.15)',
+      color: '#f87171',
+      border: 'rgba(239,68,68,0.3)',
+      icon: AlertTriangle,
+    },
+  };
+  const c = config[level] || config.low;
+  const Icon = c.icon;
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+        fontSize: 10,
+        fontWeight: 700,
+        letterSpacing: '0.06em',
+        textTransform: 'uppercase',
+        padding: '3px 8px',
+        background: c.bg,
+        color: c.color,
+        border: `1px solid ${c.border}`,
+      }}
+    >
+      <Icon size={10} /> {level}
+    </span>
+  );
+}
+
+function ActionIcon({ action }) {
+  const size = 12;
+  switch ((action || '').toUpperCase()) {
+    case 'CREATE':
+      return <FilePlus size={size} color="#4ade80" />;
+    case 'DELETE':
+      return <FileX size={size} color="#f87171" />;
+    case 'RUN_COMMAND':
+      return <Zap size={size} color="#fbbf24" />;
+    default:
+      return <FileCode size={size} color="var(--accent)" />;
+  }
+}
+
+function PlanCard({ data, currentPlan, approvePlan, rejectPlan }) {
+  const [expanded, setExpanded] = useState(true);
+  const [expandedSteps, setExpandedSteps] = useState({});
+  const isActive = currentPlan && currentPlan.summary === data.summary;
+
+  const openInEditor = (filePath) => {
+    if (!filePath) return;
+    try {
+      useEditorStore.getState().openFile(filePath);
+    } catch (err) {
+      console.warn('[AIPanel] Could not open file in editor:', filePath, err);
+    }
+  };
+
+  const toggleStep = (stepId) => {
+    setExpandedSteps((prev) => ({ ...prev, [stepId]: !prev[stepId] }));
+  };
+
+  // Aggregate file impacts
+  const allSteps = data.steps || [];
+  const fileImpact = { CREATE: new Set(), MODIFY: new Set(), DELETE: new Set(), RUN_COMMAND: 0 };
+  for (const s of allSteps) {
+    const action = (s.action || 'MODIFY').toUpperCase();
+    const files = s.files?.length ? s.files : [s.filePath].filter(Boolean);
+    if (action === 'RUN_COMMAND') {
+      fileImpact.RUN_COMMAND++;
+    } else {
+      for (const f of files) {
+        (fileImpact[action] || fileImpact.MODIFY).add(f);
+      }
+    }
+  }
+
+  const confidencePercent =
+    typeof data.confidence === 'number' ? Math.round(data.confidence * 100) : null;
+
+  return (
+    <div
+      style={{
+        background: 'rgba(15,23,42,0.7)',
+        border: '1px solid rgba(148,163,184,0.18)',
+        borderLeft: '3px solid var(--accent)',
+      }}
+    >
+      {/* ── Header ── */}
+      <div
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '12px 14px',
+          cursor: 'pointer',
+          userSelect: 'none',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {expanded ? (
+            <ChevronDown size={14} color="var(--text-muted)" />
+          ) : (
+            <ChevronRight size={14} color="var(--text-muted)" />
+          )}
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+              color: 'var(--accent)',
+            }}
+          >
+            Implementation Plan
+          </span>
+          {data.risk_level && <RiskBadge level={data.risk_level} />}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {confidencePercent !== null && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span
+                style={{
+                  fontSize: 9,
+                  color: 'var(--text-muted)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                }}
+              >
+                Confidence
+              </span>
+              <div
+                style={{
+                  width: 40,
+                  height: 5,
+                  background: 'rgba(148,163,184,0.15)',
+                  overflow: 'hidden',
+                }}
+              >
+                <div
+                  style={{
+                    width: `${confidencePercent}%`,
+                    height: '100%',
+                    background:
+                      confidencePercent >= 80
+                        ? '#10b981'
+                        : confidencePercent >= 50
+                          ? '#fbbf24'
+                          : '#ef4444',
+                    transition: 'width 0.4s ease',
+                  }}
+                />
+              </div>
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  color:
+                    confidencePercent >= 80
+                      ? '#4ade80'
+                      : confidencePercent >= 50
+                        ? '#fbbf24'
+                        : '#f87171',
+                }}
+              >
+                {confidencePercent}%
+              </span>
+            </div>
+          )}
+          <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+            {allSteps.length} step{allSteps.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+      </div>
+
+      {expanded && (
+        <div style={{ padding: '0 14px 14px' }}>
+          {/* ── Summary ── */}
+          <p
+            style={{
+              margin: '0 0 12px',
+              fontSize: 13,
+              color: 'var(--text-secondary)',
+              lineHeight: 1.6,
+            }}
+          >
+            {data.summary}
+          </p>
+
+          {/* ── File Impact Summary ── */}
+          <div
+            style={{
+              display: 'flex',
+              gap: 8,
+              flexWrap: 'wrap',
+              marginBottom: 12,
+              padding: '8px 10px',
+              background: 'rgba(0,0,0,0.2)',
+              border: '1px solid rgba(148,163,184,0.1)',
+            }}
+          >
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                color: 'var(--text-muted)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                marginRight: 4,
+                paddingTop: 1,
+              }}
+            >
+              Impact:
+            </span>
+            {fileImpact.CREATE.size > 0 && (
+              <span
+                style={{
+                  fontSize: 10,
+                  padding: '2px 7px',
+                  background: 'rgba(16,185,129,0.15)',
+                  color: '#4ade80',
+                  fontWeight: 600,
+                }}
+              >
+                +{fileImpact.CREATE.size} new
+              </span>
+            )}
+            {fileImpact.MODIFY.size > 0 && (
+              <span
+                style={{
+                  fontSize: 10,
+                  padding: '2px 7px',
+                  background: 'rgba(34,211,238,0.1)',
+                  color: 'var(--accent)',
+                  fontWeight: 600,
+                }}
+              >
+                ~{fileImpact.MODIFY.size} modified
+              </span>
+            )}
+            {fileImpact.DELETE.size > 0 && (
+              <span
+                style={{
+                  fontSize: 10,
+                  padding: '2px 7px',
+                  background: 'rgba(239,68,68,0.15)',
+                  color: '#f87171',
+                  fontWeight: 600,
+                }}
+              >
+                -{fileImpact.DELETE.size} deleted
+              </span>
+            )}
+            {fileImpact.RUN_COMMAND > 0 && (
+              <span
+                style={{
+                  fontSize: 10,
+                  padding: '2px 7px',
+                  background: 'rgba(251,191,36,0.15)',
+                  color: '#fbbf24',
+                  fontWeight: 600,
+                }}
+              >
+                ⚡{fileImpact.RUN_COMMAND} command{fileImpact.RUN_COMMAND > 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+
+          {/* ── Assumptions ── */}
+          {data.assumptions?.length > 0 && (
+            <div
+              style={{
+                marginBottom: 10,
+                padding: '8px 10px',
+                fontSize: 11,
+                background: 'rgba(34,211,238,0.06)',
+                border: '1px solid rgba(34,211,238,0.15)',
+                color: 'var(--text-secondary)',
+                lineHeight: 1.5,
+              }}
+            >
+              <strong
+                style={{
+                  color: 'var(--accent)',
+                  fontSize: 10,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                }}
+              >
+                Assumptions
+              </strong>
+              <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                {data.assumptions.map((a, i) => (
+                  <li key={i}>{a}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* ── Clarifications Needed ── */}
+          {data.clarificationsNeeded?.length > 0 && (
+            <div
+              style={{
+                marginBottom: 10,
+                padding: '8px 10px',
+                fontSize: 11,
+                background: 'rgba(251,191,36,0.08)',
+                border: '1px solid rgba(251,191,36,0.2)',
+                color: '#fbbf24',
+                lineHeight: 1.5,
+              }}
+            >
+              <strong style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                ⚠ Clarifications Needed
+              </strong>
+              <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                {data.clarificationsNeeded.map((c, i) => (
+                  <li key={i}>{c}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* ── Steps ── */}
+          <div style={{ display: 'grid', gap: 6 }}>
+            {allSteps.map((s, i) => {
+              const stepKey = s.stepId || i;
+              const isStepExpanded = expandedSteps[stepKey] !== false; // default expanded
+              const files = (s.files?.length ? s.files : [s.filePath]).filter(Boolean);
+              const deps = s.depends_on?.length ? s.depends_on : [];
+
+              return (
+                <div
+                  key={stepKey}
+                  style={{
+                    background: 'rgba(0,0,0,0.25)',
+                    border: '1px solid rgba(148,163,184,0.1)',
+                  }}
+                >
+                  {/* Step header */}
+                  <div
+                    onClick={() => toggleStep(stepKey)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      padding: '8px 10px',
+                      cursor: 'pointer',
+                      userSelect: 'none',
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        color: 'var(--text-muted)',
+                        minWidth: 20,
+                        textAlign: 'right',
+                        paddingTop: 2,
+                      }}
+                    >
+                      {i + 1}.
+                    </span>
+                    <ActionIcon action={s.action} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}
+                      >
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.04em',
+                            padding: '1px 5px',
+                            background:
+                              s.action === 'CREATE'
+                                ? 'rgba(16,185,129,0.15)'
+                                : s.action === 'DELETE'
+                                  ? 'rgba(239,68,68,0.15)'
+                                  : s.action === 'RUN_COMMAND'
+                                    ? 'rgba(251,191,36,0.15)'
+                                    : 'rgba(34,211,238,0.1)',
+                            color:
+                              s.action === 'CREATE'
+                                ? '#4ade80'
+                                : s.action === 'DELETE'
+                                  ? '#f87171'
+                                  : s.action === 'RUN_COMMAND'
+                                    ? '#fbbf24'
+                                    : 'var(--accent)',
+                          }}
+                        >
+                          {s.action || 'MODIFY'}
+                        </span>
+                        {files.map((f) => (
+                          <button
+                            key={f}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openInEditor(f);
+                            }}
+                            title={
+                              s.action === 'CREATE'
+                                ? `📝 Will be created: ${f}`
+                                : `Open ${f} in editor`
+                            }
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              fontSize: 11,
+                              background: 'rgba(0,0,0,0.4)',
+                              padding: '1px 6px',
+                              color: 'var(--text-primary)',
+                              border: '1px solid rgba(148,163,184,0.12)',
+                              cursor: 'pointer',
+                              maxWidth: 220,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              transition: 'border-color 0.2s, background 0.2s',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.borderColor = 'var(--accent)';
+                              e.currentTarget.style.background = 'rgba(34,211,238,0.08)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.borderColor = 'rgba(148,163,184,0.12)';
+                              e.currentTarget.style.background = 'rgba(0,0,0,0.4)';
+                            }}
+                          >
+                            <Eye size={10} color="var(--accent)" />
+                            {f}
+                          </button>
+                        ))}
+                        {deps.length > 0 && (
+                          <span
+                            style={{
+                              fontSize: 9,
+                              padding: '1px 5px',
+                              background: 'rgba(148,163,184,0.08)',
+                              color: 'var(--text-muted)',
+                              border: '1px solid rgba(148,163,184,0.1)',
+                            }}
+                          >
+                            ← needs step {deps.join(', ')}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <span style={{ flexShrink: 0 }}>
+                      {isStepExpanded ? (
+                        <ChevronDown size={12} color="var(--text-muted)" />
+                      ) : (
+                        <ChevronRight size={12} color="var(--text-muted)" />
+                      )}
+                    </span>
+                  </div>
+
+                  {/* Step details */}
+                  {isStepExpanded && (
+                    <div style={{ padding: '0 10px 8px 44px' }}>
+                      {s.description && (
+                        <p
+                          style={{
+                            margin: '0 0 4px',
+                            fontSize: 11,
+                            color: 'var(--text-muted)',
+                            lineHeight: 1.5,
+                          }}
+                        >
+                          {s.description}
+                        </p>
+                      )}
+                      {s.command && (
+                        <code
+                          style={{
+                            display: 'block',
+                            fontSize: 11,
+                            padding: '4px 8px',
+                            marginBottom: 4,
+                            background: 'rgba(0,0,0,0.4)',
+                            color: '#fbbf24',
+                            whiteSpace: 'pre-wrap',
+                            border: '1px solid rgba(251,191,36,0.15)',
+                          }}
+                        >
+                          $ {s.command}
+                        </code>
+                      )}
+                      {s.verificationHints?.length > 0 && (
+                        <div
+                          style={{
+                            marginTop: 4,
+                            fontSize: 10,
+                            color: 'var(--text-muted)',
+                            opacity: 0.7,
+                          }}
+                        >
+                          <span style={{ fontWeight: 600 }}>Verify:</span>{' '}
+                          {s.verificationHints.join(' • ')}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* ── Verification Plan ── */}
+          {data.verificationPlan?.length > 0 && (
+            <div
+              style={{
+                marginTop: 10,
+                padding: '8px 10px',
+                fontSize: 11,
+                background: 'rgba(34,211,238,0.05)',
+                border: '1px solid rgba(34,211,238,0.12)',
+                color: 'var(--text-secondary)',
+                lineHeight: 1.5,
+              }}
+            >
+              <strong
+                style={{
+                  color: 'var(--accent)',
+                  fontSize: 10,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                }}
+              >
+                Verification Plan
+              </strong>
+              <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                {data.verificationPlan.map((v, i) => (
+                  <li key={i}>{v}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* ── Validation Report ── */}
+          {data.validation && (
+            <div
+              style={{
+                marginTop: 10,
+                padding: '8px 10px',
+                fontSize: 11,
+                background: data.validation.valid
+                  ? 'rgba(16,185,129,0.08)'
+                  : 'rgba(239,68,68,0.08)',
+                border: `1px solid ${data.validation.valid ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`,
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  marginBottom: 4,
+                  color: data.validation.valid ? '#4ade80' : '#f87171',
+                }}
+              >
+                {data.validation.valid ? <Check size={12} /> : <AlertTriangle size={12} />}
+                <strong>
+                  {data.validation.valid ? 'Validation Passed' : 'Validation Blocked'}
+                </strong>
+              </div>
+              {data.validation.blockingIssues?.length > 0 && (
+                <ul style={{ margin: '4px 0', paddingLeft: 18, color: '#f87171' }}>
+                  {data.validation.blockingIssues.map((issue, i) => (
+                    <li key={i} style={{ marginBottom: 2 }}>
+                      {issue}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {data.validation.warnings?.length > 0 && (
+                <div style={{ marginTop: 4 }}>
+                  {data.validation.warnings.map((w, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        color: '#fbbf24',
+                        display: 'flex',
+                        gap: 4,
+                        alignItems: 'flex-start',
+                      }}
+                    >
+                      <span style={{ flexShrink: 0 }}>⚠</span> <span>{w}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {data.validation.missingContext?.length > 0 && (
+                <div style={{ marginTop: 4, color: 'var(--text-muted)' }}>
+                  <span style={{ fontSize: 10, fontWeight: 600 }}>Missing context for:</span>{' '}
+                  {data.validation.missingContext.join(', ')}
+                </div>
+              )}
+              {typeof data.validation.scopeDelta === 'number' && data.validation.scopeDelta > 2 && (
+                <div style={{ marginTop: 4, color: '#fbbf24', fontSize: 10 }}>
+                  Scope is {data.validation.scopeDelta}× broader than the requested change
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Approval Buttons ── */}
+          {isActive && (
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <button
+                onClick={approvePlan}
+                style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  background: '#10b981',
+                  color: '#fff',
+                  border: 'none',
+                  padding: '9px',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  transition: 'background 0.2s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = '#059669')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = '#10b981')}
+              >
+                <Check size={14} strokeWidth={3} /> Approve Plan
+              </button>
+              <button
+                onClick={rejectPlan}
+                style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  background: 'rgba(255,255,255,0.05)',
+                  color: '#cbd5e1',
+                  border: '1px solid var(--panel-border)',
+                  padding: '9px',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  fontWeight: 500,
+                  transition: 'background 0.2s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = '#ef444455')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
+              >
+                <X size={14} strokeWidth={2} /> Reject
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FileChangeBadge({ msg }) {
+  const file = msg.content?.match(/Staged edits for (.+?) in/)?.[1] || 'file';
+  const isApproved =
+    msg.criticFeedback?.includes('Approved') || msg.criticFeedback?.includes('verified');
+
+  return (
+    <div
+      style={{
+        background: 'var(--app-bg)',
+        border: '1px solid var(--panel-border)',
+        borderLeft: `3px solid ${isApproved ? '#10b981' : '#fbbf24'}`,
+        padding: '10px 14px',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+        <FileCode size={14} color="var(--accent)" />
+        <code style={{ fontSize: 12, color: 'var(--text-primary)', fontWeight: 600 }}>{file}</code>
+        <span
+          style={{
+            fontSize: 9,
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            letterSpacing: '0.06em',
+            padding: '2px 6px',
+            background: isApproved ? 'rgba(16,185,129,0.15)' : 'rgba(251,191,36,0.15)',
+            color: isApproved ? '#4ade80' : '#fbbf24',
+          }}
+        >
+          {isApproved ? 'Verified' : 'Needs Review'}
+        </span>
+      </div>
+      {msg.criticFeedback && (
+        <div
+          style={{
+            fontSize: 11,
+            color: isApproved ? '#4ade80' : '#fbbf24',
+            padding: '6px 8px',
+            background: 'rgba(0,0,0,0.2)',
+            borderTop: '1px dashed var(--panel-border)',
+            lineHeight: 1.5,
+          }}
+        >
+          <strong style={{ opacity: 0.7, fontSize: 10 }}>Critic:</strong> {msg.criticFeedback}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ThinkingIndicator({ message, latestRunState, activeStep, onTerminate }) {
+  return (
+    <div
+      style={{
+        alignSelf: 'flex-start',
+        color: 'var(--text-secondary)',
+        fontSize: 12,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 6,
+        background: 'rgba(255,255,255,0.03)',
+        padding: '10px 14px',
+        border: '1px solid var(--panel-border)',
+        width: '100%',
+        boxSizing: 'border-box',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Orbit
+            size={14}
+            color="var(--accent)"
+            style={{ animation: 'panelSpin 2s linear infinite', flexShrink: 0 }}
+          />
+          <span style={{ fontWeight: 600 }}>{message || 'Thinking...'}</span>
+        </div>
+        <button
+          onClick={onTerminate}
+          title="Terminate pipeline"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            background: 'rgba(239,68,68,0.15)',
+            border: '1px solid rgba(239,68,68,0.4)',
+            color: '#f87171',
+            padding: '3px 8px',
+            cursor: 'pointer',
+            fontSize: 11,
+            fontWeight: 600,
+            flexShrink: 0,
+          }}
+        >
+          <Square size={10} fill="#f87171" strokeWidth={0} /> Stop
+        </button>
+      </div>
+      {latestRunState && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          {latestRunState.provider && (
+            <span
+              style={{
+                fontSize: 9,
+                padding: '2px 6px',
+                background: 'rgba(34,211,238,0.1)',
+                color: 'var(--accent)',
+                border: '1px solid rgba(34,211,238,0.2)',
+              }}
+            >
+              {latestRunState.provider}:{latestRunState.model?.split('/').pop() || '?'}
+            </span>
+          )}
+          {latestRunState.phase && (
+            <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>
+              Phase: {latestRunState.phase}
+            </span>
+          )}
+          {activeStep?.stepId && (
+            <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>
+              Step: {activeStep.stepId}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GroupReviewItem({ groupId, files, meta, isSelected, onToggle }) {
+  return (
+    <div
+      style={{
+        background: 'rgba(15,23,42,0.6)',
+        border: '1px solid rgba(147,197,253,0.18)',
+        padding: '8px 10px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 6,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={onToggle}
+          style={{ cursor: 'pointer' }}
+        />
+        <span style={{ fontSize: 11, fontWeight: 700, color: '#bfdbfe', letterSpacing: '0.04em' }}>
+          {groupId.toUpperCase()}
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, paddingLeft: 22 }}>
+        {files.map((file) => (
+          <span
+            key={file}
+            style={{
+              fontSize: 10,
+              padding: '2px 6px',
+              color: '#dbeafe',
+              background: 'rgba(0,0,0,0.4)',
+              border: '1px solid rgba(147,197,253,0.1)',
+            }}
+          >
+            {file}
+            {meta[file]?.model && (
+              <span style={{ opacity: 0.6, marginLeft: 4, fontSize: 8 }}>
+                via {meta[file].model}
+              </span>
+            )}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ────────────────────────── Main Panel ────────────────────────── */
 
 export default function AIPanel() {
   const {
@@ -36,6 +1059,13 @@ export default function AIPanel() {
     createChat,
     switchChat,
     isChatLoading,
+    latestRunState,
+    controlPlane,
+    loadControlPlane,
+    activeTransactionMeta,
+    pipelinePhases,
+    activeStep,
+    finalizeDiff,
   } = useAgentStore();
   const activeFile = useEditorStore((s) => s.activeFile);
   const source = useWorkspaceAccessStore((s) => s.source);
@@ -54,16 +1084,37 @@ export default function AIPanel() {
     error: '',
   });
 
+  const [unselectedGroups, setUnselectedGroups] = useState(new Set());
+
+  useEffect(() => {
+    if (!activeTransactionId) {
+      setUnselectedGroups(new Set());
+    }
+  }, [activeTransactionId]);
+
+  const handleApproveSelected = async () => {
+    const acceptedPaths = activeTransactionFiles.filter((file) => {
+      const groupId = activeTransactionMeta[file]?.fileGroupId || 'ungrouped';
+      return !unselectedGroups.has(groupId);
+    });
+    const rejectedPaths = activeTransactionFiles.filter((file) => {
+      const groupId = activeTransactionMeta[file]?.fileGroupId || 'ungrouped';
+      return unselectedGroups.has(groupId);
+    });
+
+    await finalizeDiff({ acceptedPaths, rejectedPaths });
+  };
+
   useEffect(() => {
     connect();
     return () => disconnect();
   }, [connect, disconnect]);
-
   useEffect(() => {
     if (isConnected) {
       loadChats();
+      loadControlPlane();
     }
-  }, [isConnected, loadChats]);
+  }, [isConnected, loadChats, loadControlPlane]);
 
   useEffect(() => {
     let timer = null;
@@ -93,12 +1144,10 @@ export default function AIPanel() {
         }));
       }
     };
-
     if (isConnected) {
       refresh();
       timer = setInterval(refresh, 15000);
     }
-
     return () => {
       if (timer) clearInterval(timer);
     };
@@ -125,11 +1174,7 @@ export default function AIPanel() {
         error: '',
       }));
     } catch (err) {
-      setIndexStatus((s) => ({
-        ...s,
-        loading: false,
-        error: err.message || 'Index failed',
-      }));
+      setIndexStatus((s) => ({ ...s, loading: false, error: err.message || 'Index failed' }));
     }
   };
 
@@ -159,6 +1204,7 @@ export default function AIPanel() {
         @keyframes panelSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
       `}</style>
 
+      {/* Header */}
       <div
         style={{
           padding: '14px 18px 12px',
@@ -190,7 +1236,6 @@ export default function AIPanel() {
           </span>
           <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{source.description}</span>
         </div>
-
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingTop: 4 }}>
           <div
             style={{
@@ -256,10 +1301,42 @@ export default function AIPanel() {
         </button>
       </div>
 
+      {/* Pipeline Timeline */}
+      <PipelineTimeline phases={pipelinePhases} />
+
+      {/* Provider Health */}
+      {controlPlane?.health && (
+        <div
+          style={{
+            padding: '8px 14px',
+            borderBottom: '1px solid var(--panel-border)',
+            background: 'rgba(3,7,18,0.6)',
+            display: 'flex',
+            gap: 6,
+            flexWrap: 'wrap',
+          }}
+        >
+          {Object.entries(controlPlane.health).map(([provider, state]) => (
+            <span
+              key={provider}
+              style={{
+                fontSize: 9,
+                padding: '3px 6px',
+                color: state.availabilityState === 'healthy' ? '#4ade80' : '#fbbf24',
+                border: `1px solid ${state.availabilityState === 'healthy' ? 'rgba(16,185,129,0.2)' : 'rgba(251,191,36,0.2)'}`,
+                background: 'rgba(15,23,42,0.5)',
+              }}
+            >
+              {provider}: {state.availabilityState}
+            </span>
+          ))}
+        </div>
+      )}
+
       {/* Index Status */}
       <div
         style={{
-          padding: '10px 14px',
+          padding: '8px 14px',
           borderBottom: '1px solid var(--panel-border)',
           background: 'rgba(0,0,0,0.18)',
           display: 'flex',
@@ -277,22 +1354,10 @@ export default function AIPanel() {
               color: 'var(--text-muted)',
             }}
           >
-            Index Status
+            Index
           </span>
-          <span style={{ fontSize: 12, color: 'var(--text-primary)' }}>
-            {indexStatus.chunksStored} chunks / {indexStatus.inventoryCount} files -{' '}
-            {indexStatus.workspaceId}
-          </span>
-          <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-            Embed: {indexStatus.embeddingOk ? 'OK' : 'Down'} | Chroma:{' '}
-            {indexStatus.chromaOk ? 'OK' : 'Down'}
-          </span>
-          <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-            {indexStatus.error
-              ? `Error: ${indexStatus.error}`
-              : indexStatus.lastUpdated
-                ? `Updated ${indexStatus.lastUpdated}`
-                : 'Not loaded'}
+          <span style={{ fontSize: 11, color: 'var(--text-primary)' }}>
+            {indexStatus.chunksStored} chunks / {indexStatus.inventoryCount} files
           </span>
         </div>
         <button
@@ -303,15 +1368,14 @@ export default function AIPanel() {
               indexStatus.loading || !isConnected ? 'var(--panel-border)' : 'var(--accent)',
             color: indexStatus.loading || !isConnected ? 'var(--text-muted)' : '#000',
             border: 'none',
-            borderRadius: 0,
-            padding: '6px 10px',
+            padding: '4px 10px',
             fontSize: 10,
             fontWeight: 700,
             letterSpacing: '0.06em',
             cursor: indexStatus.loading || !isConnected ? 'not-allowed' : 'pointer',
           }}
         >
-          {indexStatus.loading ? 'Indexing...' : 'Reindex'}
+          {indexStatus.loading ? '...' : 'Reindex'}
         </button>
       </div>
 
@@ -323,7 +1387,7 @@ export default function AIPanel() {
           padding: '18px',
           display: 'flex',
           flexDirection: 'column',
-          gap: 18,
+          gap: 14,
         }}
       >
         {messages.length === 0 && (
@@ -350,8 +1414,8 @@ export default function AIPanel() {
               <Orbit size={22} />
             </div>
             <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.6 }}>
-              Ask for a targeted edit, a refactor, or a patch for the active file. Review stays
-              explicit before code is applied.
+              Ask for a targeted edit, a refactor, or a patch. Review stays explicit before code is
+              applied.
             </p>
           </div>
         )}
@@ -366,149 +1430,45 @@ export default function AIPanel() {
               alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start',
             }}
           >
-            <div
-              style={{
-                background: msg.role === 'user' ? 'var(--accent)' : 'var(--app-bg)',
-                color: msg.role === 'user' ? '#000000' : 'var(--text-primary)',
-                padding: '12px 16px',
-                borderRadius: 0,
-                maxWidth: '90%',
-                wordBreak: 'break-word',
-                fontSize: 13.5,
-                lineHeight: 1.6,
-                border:
-                  msg.role === 'user'
-                    ? '1px solid var(--accent-dim)'
-                    : '1px solid var(--panel-border)',
-                borderLeft:
-                  msg.role === 'user' ? '1px solid var(--accent-dim)' : '4px solid var(--accent)',
-                boxShadow: msg.role === 'user' ? '4px 4px 0px rgba(0,0,0,1)' : 'none',
-                ...(msg.type === 'error' && {
-                  color: 'var(--red)',
-                  border: '1px solid var(--red)',
-                  borderLeft: '4px solid var(--red)',
-                  background: 'var(--app-bg)',
-                }),
-              }}
-            >
-              {msg.type === 'plan' ? (
-                <div>
-                  <strong
-                    style={{
-                      opacity: 0.8,
-                      fontSize: 12,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.05em',
-                    }}
-                  >
-                    Proposed Plan
-                  </strong>
-                  <p style={{ margin: '8px 0' }}>{msg.data.summary}</p>
-                  <ul style={{ paddingLeft: 20, margin: 0, color: 'var(--text-secondary)' }}>
-                    {msg.data.steps.map((s) => (
-                      <li key={s.stepId} style={{ marginBottom: 4 }}>
-                        <span style={{ color: 'var(--accent)' }}>{s.action}</span>{' '}
-                        <code
-                          style={{ background: '#00000044', padding: '2px 4px', borderRadius: 4 }}
-                        >
-                          {s.filePath}
-                        </code>
-                      </li>
-                    ))}
-                  </ul>
-
-                  {/* If this is the active pending plan, show approval buttons */}
-                  {currentPlan && currentPlan.summary === msg.data.summary && (
-                    <div
-                      style={{
-                        marginTop: 16,
-                        display: 'flex',
-                        gap: 8,
-                        background: 'rgba(0,0,0,0.1)',
-                        padding: 10,
-                        borderRadius: 8,
-                        border: '1px solid rgba(255,255,255,0.05)',
-                      }}
-                    >
-                      <button
-                        onClick={approvePlan}
-                        style={{
-                          flex: 1,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: 6,
-                          background: '#10b981',
-                          color: '#fff',
-                          border: 'none',
-                          padding: '8px',
-                          borderRadius: 6,
-                          cursor: 'pointer',
-                          fontSize: 12,
-                          fontWeight: 600,
-                          transition: 'background 0.2s',
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = '#059669')}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = '#10b981')}
-                      >
-                        <Check size={14} strokeWidth={3} /> Approve Plan
-                      </button>
-                      <button
-                        onClick={rejectPlan}
-                        style={{
-                          flex: 1,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: 6,
-                          background: 'rgba(255,255,255,0.05)',
-                          color: '#cbd5e1',
-                          border: '1px solid var(--panel-border)',
-                          padding: '8px',
-                          borderRadius: 6,
-                          cursor: 'pointer',
-                          fontSize: 12,
-                          fontWeight: 500,
-                          transition: 'background 0.2s',
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = '#ef444455')}
-                        onMouseLeave={(e) =>
-                          (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')
-                        }
-                      >
-                        <X size={14} strokeWidth={2} /> Reject
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ) : msg.type === 'code' ? (
-                <div>
-                  <div
-                    style={{
-                      fontFamily: '"JetBrains Mono", monospace',
-                      fontSize: 12.5,
-                      whiteSpace: 'pre-wrap',
-                    }}
-                  >
-                    {msg.content}
-                  </div>
-                  {msg.criticFeedback && (
-                    <div
-                      style={{
-                        marginTop: 12,
-                        paddingTop: 12,
-                        borderTop: '1px dashed var(--panel-border)',
-                        fontSize: 11,
-                        color: msg.criticFeedback.includes('Approved') ? '#4ade80' : '#fbbf24',
-                      }}
-                    >
-                      <strong style={{ opacity: 0.7 }}>Semantic Verifier:</strong>
-                      <br />
-                      {msg.criticFeedback}
-                    </div>
-                  )}
-                </div>
-              ) : (
+            {/* Plan message */}
+            {msg.type === 'plan' ? (
+              <div style={{ width: '100%' }}>
+                <PlanCard
+                  data={msg.data}
+                  currentPlan={currentPlan}
+                  approvePlan={approvePlan}
+                  rejectPlan={rejectPlan}
+                />
+              </div>
+            ) : msg.type === 'code' ? (
+              <div style={{ width: '100%' }}>
+                <FileChangeBadge msg={msg} />
+              </div>
+            ) : (
+              <div
+                style={{
+                  background: msg.role === 'user' ? 'var(--accent)' : 'var(--app-bg)',
+                  color: msg.role === 'user' ? '#000000' : 'var(--text-primary)',
+                  padding: '12px 16px',
+                  maxWidth: '90%',
+                  wordBreak: 'break-word',
+                  fontSize: 13.5,
+                  lineHeight: 1.6,
+                  border:
+                    msg.role === 'user'
+                      ? '1px solid var(--accent-dim)'
+                      : '1px solid var(--panel-border)',
+                  borderLeft:
+                    msg.role === 'user' ? '1px solid var(--accent-dim)' : '4px solid var(--accent)',
+                  boxShadow: msg.role === 'user' ? '4px 4px 0px rgba(0,0,0,1)' : 'none',
+                  ...(msg.type === 'error' && {
+                    color: 'var(--red)',
+                    border: '1px solid var(--red)',
+                    borderLeft: '4px solid var(--red)',
+                    background: 'var(--app-bg)',
+                  }),
+                }}
+              >
                 <div style={{ position: 'relative' }}>
                   <span style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</span>
                   {msg.isStreaming && (
@@ -525,62 +1485,23 @@ export default function AIPanel() {
                     />
                   )}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         ))}
 
         {isThinking && (
-          <div
-            style={{
-              alignSelf: 'flex-start',
-              color: 'var(--text-secondary)',
-              fontSize: 12,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              background: 'rgba(255,255,255,0.03)',
-              padding: '8px 12px',
-              border: '1px solid var(--panel-border)',
-              width: '100%',
-              boxSizing: 'border-box',
-              justifyContent: 'space-between',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Orbit
-                size={14}
-                color="var(--accent)"
-                style={{ animation: 'panelSpin 2s linear infinite', flexShrink: 0 }}
-              />
-              <span>{thinkingMessage || 'Thinking...'}</span>
-            </div>
-            <button
-              onClick={terminate}
-              title="Terminate pipeline"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                background: 'rgba(239,68,68,0.15)',
-                border: '1px solid rgba(239,68,68,0.4)',
-                color: '#f87171',
-                padding: '3px 8px',
-                cursor: 'pointer',
-                fontSize: 11,
-                fontWeight: 600,
-                flexShrink: 0,
-              }}
-            >
-              <Square size={10} fill="#f87171" strokeWidth={0} />
-              Stop
-            </button>
-          </div>
+          <ThinkingIndicator
+            message={thinkingMessage}
+            latestRunState={latestRunState}
+            activeStep={activeStep}
+            onTerminate={terminate}
+          />
         )}
-
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Transaction Review */}
       {activeTransactionId && (
         <div
           style={{
@@ -606,9 +1527,7 @@ export default function AIPanel() {
               onClick={() => {
                 const tx = diffService.getTransaction(activeTransactionId);
                 const first = tx?.patchedPaths?.[0];
-                if (first) {
-                  useEditorStore.getState().openFile(first);
-                }
+                if (first) useEditorStore.getState().openFile(first);
               }}
               style={{
                 display: 'inline-flex',
@@ -621,30 +1540,59 @@ export default function AIPanel() {
                 cursor: 'pointer',
               }}
             >
-              <Eye size={14} strokeWidth={3} /> Review in Editor
+              <Eye size={14} strokeWidth={3} /> Review
             </button>
           </div>
 
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {activeTransactionFiles.map((file) => (
-              <span
-                key={file}
-                style={{
-                  fontSize: 11,
-                  padding: '4px 8px',
-                  color: '#dbeafe',
-                  background: 'rgba(15,23,42,0.48)',
-                  border: '1px solid rgba(147,197,253,0.18)',
-                }}
-              >
-                {file}
-              </span>
-            ))}
+          <div style={{ display: 'grid', gap: 8, marginTop: 4 }}>
+            {(() => {
+              // Group files by fileGroupId
+              const filesByGroup = {};
+              activeTransactionFiles.forEach((file) => {
+                const groupId = activeTransactionMeta[file]?.fileGroupId || 'ungrouped';
+                if (!filesByGroup[groupId]) filesByGroup[groupId] = [];
+                filesByGroup[groupId].push(file);
+              });
+
+              return Object.entries(filesByGroup).map(([groupId, files]) => {
+                // Determine group selection state. We'll use local state to track UNSELECTED groups.
+                // But for now, since we didn't add the useState hook to AIPanel, we will add a
+                // simple checkbox using DOM or just build a quick wrapper here if needed.
+                // Wait, we need unselectedGroups state. Let's just create a functional component inline
+                // or just use window.__unselectedGroups (hacky) or add state.
+                return (
+                  <GroupReviewItem
+                    key={groupId}
+                    groupId={groupId}
+                    files={files}
+                    meta={activeTransactionMeta}
+                    isSelected={!unselectedGroups.has(groupId)}
+                    onToggle={() => {
+                      setUnselectedGroups((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(groupId)) next.delete(groupId);
+                        else next.add(groupId);
+                        return next;
+                      });
+                    }}
+                  />
+                );
+              });
+            })()}
           </div>
 
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
             <button
-              onClick={approveTransaction}
+              onClick={handleApproveSelected}
+              disabled={
+                activeTransactionFiles.length > 0 &&
+                unselectedGroups.size ===
+                  new Set(
+                    activeTransactionFiles.map(
+                      (f) => activeTransactionMeta[f]?.fileGroupId || 'ungrouped'
+                    )
+                  ).size
+              }
               style={{
                 flex: 1,
                 display: 'flex',
@@ -658,10 +1606,19 @@ export default function AIPanel() {
                 cursor: 'pointer',
                 fontSize: 12,
                 fontWeight: 700,
+                opacity:
+                  activeTransactionFiles.length > 0 &&
+                  unselectedGroups.size ===
+                    new Set(
+                      activeTransactionFiles.map(
+                        (f) => activeTransactionMeta[f]?.fileGroupId || 'ungrouped'
+                      )
+                    ).size
+                    ? 0.5
+                    : 1,
               }}
             >
-              <Check size={14} strokeWidth={3} />
-              Apply and save
+              <Check size={14} strokeWidth={3} /> Apply Selected
             </button>
             <button
               onClick={rejectTransaction}
@@ -680,13 +1637,13 @@ export default function AIPanel() {
                 fontWeight: 600,
               }}
             >
-              <X size={14} strokeWidth={2} />
-              Discard
+              <X size={14} strokeWidth={2} /> Discard All
             </button>
           </div>
         </div>
       )}
 
+      {/* Input */}
       <div
         style={{
           padding: '14px 18px 18px',

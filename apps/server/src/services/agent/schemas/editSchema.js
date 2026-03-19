@@ -15,7 +15,12 @@ export const editChunkSchema = z.object({
 
 export const editSchema = z.object({
   stepId: z.number().describe('The step ID this edit applies to.'),
-  filePath: z.string().describe('The file being edited or created.'),
+  filePath: z.string().describe('The primary file being edited or created.'),
+  fileGroupId: z.string().optional().describe('Logical file group id for this patch.'),
+  files: z.array(z.string()).optional().describe('All files touched by this patch group.'),
+  rationale: z.string().optional().describe('Short explanation of the patch intent.'),
+  verificationHints: z.array(z.string()).optional().describe('Hints for post-patch verification.'),
+  retryCount: z.number().optional().describe('How many retry attempts produced this patch.'),
   edits: z.array(editChunkSchema).describe('An array of search/replace blocks for this file.'),
 });
 
@@ -24,6 +29,11 @@ You MUST respond with a valid JSON object matching this schema:
 {
   "stepId": 1,
   "filePath": "path/to/file.js",
+  "fileGroupId": "group-1",
+  "files": ["path/to/file.js"],
+  "rationale": "why this change exists",
+  "verificationHints": [],
+  "retryCount": 0,
   "edits": [
     {
       "search": "exact string to replace (empty if creating new file)\\n",

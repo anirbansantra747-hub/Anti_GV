@@ -138,6 +138,12 @@ export default function FileNode({ node, style, dragHandle }) {
     setRenaming(false);
     const newName = renameVal.trim();
     if (!newName || newName === node.data.name) return;
+
+    if (!window.confirm(`Are you sure you want to rename "${node.data.name}" to "${newName}"?`)) {
+      setRenameVal(node.data.name);
+      return;
+    }
+
     const segments = node.id.split('/').filter(Boolean);
     segments[segments.length - 1] = newName;
     const newPath = '/' + segments.join('/');
@@ -161,6 +167,10 @@ export default function FileNode({ node, style, dragHandle }) {
   };
 
   const handleDelete = () => {
+    if (!window.confirm(`Are you sure you want to delete "${node.data.name}"? This action cannot be undone.`)) {
+      return;
+    }
+
     try {
       fileSystemAPI.deleteFile(node.id);
       useEditorStore.getState().closeTab(node.id);
