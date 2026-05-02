@@ -80,9 +80,41 @@ export default function FileTree() {
         </button>
       </div>
       <div style={{ flex: 1, overflowY: 'auto' }}>
-        {treeData[0]?.children?.map((node) => (
-          <TreeNode key={node.name} node={node} depth={0} />
-        ))}
+        {treeData[0]?.children?.length === 0 ? (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: '100%',
+              color: '#64748b',
+              fontSize: '0.875rem',
+              padding: '32px 16px',
+              textAlign: 'center',
+              gap: '12px',
+            }}
+          >
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            </svg>
+            <div>This folder is empty</div>
+            <div style={{ fontSize: '0.75rem', color: '#475569' }}>
+              Create a file or ask the AI to start coding.
+            </div>
+          </div>
+        ) : (
+          treeData[0]?.children?.map((node) => <TreeNode key={node.name} node={node} depth={0} />)
+        )}
       </div>
     </div>
   );

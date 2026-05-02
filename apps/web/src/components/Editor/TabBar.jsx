@@ -26,13 +26,10 @@ export default function TabBar() {
       style={{
         display: 'flex',
         alignItems: 'flex-end',
-        background: 'rgba(11,12,16,0.5)',
-        borderBottom: '1px solid var(--panel-border)',
+        background: 'var(--panel-bg)',
         overflowX: 'auto',
         flexShrink: 0,
-        height: 40,
-        padding: '0 8px',
-        gap: 4,
+        height: 35,
       }}
     >
       {openTabs.map((path) => {
@@ -46,22 +43,17 @@ export default function TabBar() {
               display: 'flex',
               alignItems: 'center',
               gap: 6,
-              padding: '0 14px',
-              height: 34,
-              borderRadius: 0,
-              background: isActive ? 'var(--panel-bg)' : 'transparent',
-              border: isActive ? '1px solid var(--accent)' : '1px solid transparent',
-              borderBottom: 'none',
-              color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
+              padding: '0 10px 0 14px',
+              height: 35,
+              background: isActive ? 'var(--app-bg)' : '#2d2d2d',
+              borderRight: '1px solid #252526',
+              color: isActive ? '#ffffff' : 'var(--text-secondary)',
               cursor: 'pointer',
               fontSize: 13,
-              fontWeight: isActive ? 700 : 400,
               whiteSpace: 'nowrap',
               flexShrink: 0,
-              transition: 'background 0.1s, color 0.1s',
               userSelect: 'none',
               position: 'relative',
-              boxShadow: 'none',
             }}
             onClick={() => openFile(path)}
             onMouseEnter={(e) => {
@@ -77,7 +69,7 @@ export default function TabBar() {
               }
             }}
           >
-            {/* Brutalist active indicator block */}
+            {/* VS Code active indicator line */}
             {isActive && (
               <div
                 style={{
@@ -85,7 +77,7 @@ export default function TabBar() {
                   top: 0,
                   left: 0,
                   right: 0,
-                  height: 4,
+                  height: 1,
                   background: 'var(--accent)',
                 }}
               />
@@ -116,19 +108,15 @@ export default function TabBar() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                opacity: 0.5,
-                transition: 'all 0.1s',
-                marginLeft: 2,
+                opacity: isActive || isDirty ? 1 : 0,
+                transition: 'background 0.1s',
+                marginLeft: 4,
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.opacity = '1';
-                e.currentTarget.style.background = 'var(--red)';
-                e.currentTarget.style.color = '#fff';
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.opacity = '0.5';
                 e.currentTarget.style.background = 'none';
-                e.currentTarget.style.color = 'inherit';
               }}
             >
               <X size={12} strokeWidth={2.5} />

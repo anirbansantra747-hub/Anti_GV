@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
-import { Save, CheckCircle, XCircle, Loader, Zap, History, Menu } from 'lucide-react';
+import { Save, CheckCircle, XCircle, Loader, Zap, History, Menu, Bot } from 'lucide-react';
 import { useFileSystemStore } from '../../stores/fileSystemStore.js';
 import { useAgentStore } from '../../stores/agentStore.js';
 import { useEditorStore } from '../../stores/editorStore.js';
@@ -72,7 +72,13 @@ function StateBadge({ state }) {
   );
 }
 
-export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false, onNavigate }) {
+export default function Topbar({
+  tabRole = 'unknown',
+  recoveredFromIDB = false,
+  onNavigate,
+  onToggleAIPanel,
+  aiPanelOpen,
+}) {
   const workspaceState = useFileSystemStore((s) => s.workspaceState);
   const socket = useAgentStore((s) => s.socket);
   const activeFile = useEditorStore((s) => s.activeFile);
@@ -246,20 +252,6 @@ export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false, 
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginRight: 16 }}>
-          <div
-            style={{
-              width: 32,
-              height: 32,
-              background: 'var(--accent)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              border: '1px solid var(--accent-dim)',
-              boxShadow: '4px 4px 0px rgba(0,0,0,1)',
-            }}
-          >
-            <Zap size={16} color="#000000" strokeWidth={3} />
-          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <span
               style={{
@@ -270,7 +262,7 @@ export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false, 
                 color: 'var(--text-primary)',
               }}
             >
-              Anti_GV
+              Nebula
             </span>
             <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{source.label}</span>
           </div>
@@ -279,12 +271,7 @@ export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false, 
         <StateBadge state={workspaceState || 'IDLE'} />
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          {[
-            ['Dashboard', '/dashboard'],
-            ['Profile', '/profile'],
-            ['Settings', '/settings'],
-            ['Logout', '/logout'],
-          ].map(([label, path]) => (
+          {[['Learn', '/learn']].map(([label, path]) => (
             <button
               key={path}
               onClick={() => onNavigate?.(path)}
@@ -403,6 +390,28 @@ export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false, 
         )}
 
         <button
+          title="Toggle AI Agent Panel"
+          onClick={onToggleAIPanel}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 34,
+            height: 34,
+            borderRadius: 8,
+            background: aiPanelOpen ? 'var(--accent-glow)' : 'rgba(255,255,255,0.04)',
+            color: aiPanelOpen ? 'var(--accent)' : 'var(--text-secondary)',
+            border: aiPanelOpen
+              ? '1px solid rgba(34,211,238,0.25)'
+              : '1px solid var(--panel-border)',
+            cursor: 'pointer',
+            marginRight: 8,
+          }}
+        >
+          <Bot size={18} strokeWidth={2} />
+        </button>
+
+        <button
           id="history-btn"
           title="Workspace history (snapshots)"
           onClick={() => setShowHistory((v) => !v)}
@@ -421,6 +430,7 @@ export default function Topbar({ tabRole = 'unknown', recoveredFromIDB = false, 
             fontSize: 12,
             fontWeight: 600,
             fontFamily: 'inherit',
+            marginRight: 8,
           }}
         >
           <History size={14} strokeWidth={2} />

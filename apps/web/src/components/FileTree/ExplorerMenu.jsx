@@ -7,7 +7,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAgentStore } from '../../stores/agentStore.js';
 
-export default function ExplorerMenu({ onNewFile, onNewFolder }) {
+export default function ExplorerMenu({ onNewFile, onNewFolder, onRefresh }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef(null);
   const socket = useAgentStore((state) => state.socket);
@@ -44,7 +44,7 @@ export default function ExplorerMenu({ onNewFile, onNewFolder }) {
     { label: 'New File', action: onNewFile },
     { label: 'New Folder', action: onNewFolder },
     { divider: true },
-    { label: 'Refresh', action: () => window.location.reload() },
+    { label: 'Refresh', action: onRefresh },
   ];
 
   return (

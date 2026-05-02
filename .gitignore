@@ -37,3 +37,7 @@ coverage/
 # Misc
 *.tgz
 .cache/
+
+# Temp files
+temp_*
+*.txt

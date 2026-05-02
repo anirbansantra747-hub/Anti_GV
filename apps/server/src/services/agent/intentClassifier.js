@@ -1,12 +1,12 @@
-import { generateResponse } from '../llm/llmRouter.js';
+import { AGENT_TASK_TYPES } from '@antigv/shared';
+import { generateTaskResponse } from '../llm/llmRouter.js';
 
 /**
  * Classifies the intent of a user prompt to route it to the correct agent pipeline.
- * Uses OpenRouter step-3.5-flash (fast, free) with Groq fallback.
  * @param {string} prompt - The user's input prompt
  * @returns {Promise<{ intent: string, confidence: number, reason: string }>}
  */
-export const classifyIntent = async (prompt) => {
+export const classifyIntent = async (prompt, taskBrief = null, options = {}) => {
   const systemPrompt = `You are an expert intent classifier for an AI coding agent.
 Classify the user's prompt into EXACTLY ONE category:
 
@@ -22,19 +22,25 @@ Output valid JSON only, no markdown:
 
   const messages = [
     { role: 'system', content: systemPrompt },
-    { role: 'user', content: prompt },
+    {
+      role: 'user',
+      content: taskBrief
+        ? `CANONICAL TASK BRIEF:\n${JSON.stringify(taskBrief, null, 2)}\n\nRAW PROMPT:\n${prompt}`
+        : prompt,
+    },
   ];
 
   try {
-    const responseJsonStr = await generateResponse(messages, {
-      task: 'classify',
+    const { content, provider, model } = await generateTaskResponse(messages, {
+      runId: options.runId,
+      taskType: AGENT_TASK_TYPES.INTENT_CLASSIFICATION,
       jsonMode: true,
       temperature: 0.1,
       max_tokens: 150,
     });
-    return JSON.parse(responseJsonStr);
+    return { ...JSON.parse(content), route: { provider, model } };
   } catch (error) {
     console.error('[IntentClassifier] Failed to classify intent:', error);
-    return { intent: 'ASK', confidence: 0, reason: 'Fallback due to error' };
+    return { intent: 'ASK', confidence: 0, reason: 'Fallback due to error', route: null };
   }
 };

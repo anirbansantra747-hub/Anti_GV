@@ -26,6 +26,31 @@ const MAX_TERMINAL_LINES = 50;
 /** Max chat messages (user + assistant) to include */
 const MAX_CHAT_MESSAGES = 6;
 
+/** Files the AI should never modify unless explicitly requested */
+const CRITICAL_FILES = [
+  'package.json',
+  'package-lock.json',
+  'pnpm-lock.yaml',
+  'yarn.lock',
+  '.env',
+  '.env.local',
+  '.env.production',
+  '.env.development',
+  '.gitignore',
+  '.prettierrc',
+  '.eslintrc',
+  'eslint.config.js',
+  'tsconfig.json',
+  'vite.config.js',
+  'vite.config.ts',
+  'next.config.js',
+  'next.config.mjs',
+  'turbo.json',
+  'docker-compose.yml',
+  'Dockerfile',
+  'pnpm-workspace.yaml',
+];
+
 class ContextService {
   /**
    * Internal: rolling terminal output buffer (last N lines).
@@ -123,11 +148,25 @@ class ContextService {
     console.log('  openTabs      :', openTabs);
     console.log('  cursorPosition:', cursorPosition);
 
-    // ── 1. File Tree ────────────────────────────────────────────────────────
+    // ── 1. File Tree (structured) ────────────────────────────────────────────
     const allPaths = fileSystemAPI.listFiles('/');
     const fileTree = allPaths.filter((p) => !p.includes('node_modules'));
-    sections.push(`## File Tree\n\`\`\`\n${fileTree.join('\n')}\n\`\`\``);
+    const structuredTree = this._buildStructuredTree(fileTree);
+    sections.push(`## File Tree (Workspace Structure)\n\`\`\`\n${structuredTree}\n\`\`\``);
     console.log('  fileTree items:', fileTree.length);
+
+    // ── 1b. Critical Files Warning ──────────────────────────────────────────
+    const foundCritical = fileTree.filter((p) => {
+      const basename = p.split('/').pop();
+      return CRITICAL_FILES.includes(basename);
+    });
+    if (foundCritical.length > 0) {
+      sections.push(
+        `## ⚠ Critical Files (DO NOT MODIFY unless explicitly asked)\n` +
+          foundCritical.map((f) => `- ${f}`).join('\n') +
+          `\n\nThese are infrastructure/config files. Modifying them can break the project. Only touch them if the user explicitly asks.`
+      );
+    }
 
     // ── 2. Active File ───────────────────────────────────────────────────────
     if (activeFile && fileSystemAPI.existsFile(activeFile)) {
@@ -238,6 +277,41 @@ class ContextService {
     } catch {
       return `[Could not read file: ${path}]`;
     }
+  }
+
+  /**
+   * Build a structured, indented tree representation from flat file paths.
+   * @param {string[]} paths
+   * @returns {string}
+   */
+  _buildStructuredTree(paths) {
+    const tree = {};
+    for (const p of paths) {
+      const parts = p.split('/').filter(Boolean);
+      let node = tree;
+      for (const part of parts) {
+        if (!node[part]) node[part] = {};
+        node = node[part];
+      }
+    }
+
+    const lines = [];
+    const render = (obj, indent = 0) => {
+      const entries = Object.entries(obj).sort(([a, va], [b, vb]) => {
+        const aIsDir = Object.keys(va).length > 0;
+        const bIsDir = Object.keys(vb).length > 0;
+        if (aIsDir !== bIsDir) return aIsDir ? -1 : 1;
+        return a.localeCompare(b);
+      });
+      for (const [name, children] of entries) {
+        const isDir = Object.keys(children).length > 0;
+        const prefix = '  '.repeat(indent);
+        lines.push(`${prefix}${isDir ? '📁 ' : '📄 '}${name}`);
+        if (isDir) render(children, indent + 1);
+      }
+    };
+    render(tree);
+    return lines.join('\n');
   }
 }
 

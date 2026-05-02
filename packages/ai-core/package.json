@@ -8,5 +8,8 @@
     "build": "echo 'No build step for ai-core'",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix"
+  },
+  "dependencies": {
+    "@antigv/shared": "workspace:*"
   }
 }

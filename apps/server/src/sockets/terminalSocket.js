@@ -11,7 +11,7 @@ export const setupTerminalSocket = (io, socket) => {
       const shell = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
 
       // Get the workspace root (will use current ready state)
-      const workspaceCwd = getWorkspaceRoot();
+      const workspaceCwd = getWorkspaceRoot() || os.homedir();
       console.log(`[TerminalSocket] Spawning terminal in workspace: ${workspaceCwd}`);
       console.log(`[TerminalSocket] Socket ID: ${socket.id}, Shell: ${shell}`);
 

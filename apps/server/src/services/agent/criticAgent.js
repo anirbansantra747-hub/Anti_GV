@@ -1,71 +1,84 @@
-import { generateResponse } from '../llm/llmRouter.js';
+import { AGENT_TASK_TYPES } from '@antigv/shared';
+import { generateTaskResponse } from '../llm/llmRouter.js';
+import { ROUTING_STRATEGY } from '../llm/modelRegistry.js';
 
 const criticSystemPrompt = `You are an expert Senior Software Engineer acting as a Code Critic.
-Your job is to review a patch (a set of search/replace edits) proposed by another AI agent and determine if it correctly implements the user's request.
+Review a proposed patch and return JSON only:
+{"isCorrect": boolean, "feedback": "explanation"}
 
-You will receive:
-1. The user's original request.
-2. The current contents of the target file.
-3. The proposed edits (search/replace blocks).
+Fail the patch if the "search" block does not appear verbatim in the file context provided, if the change does not satisfy the request, or if it introduces obvious syntax/import issues. Be extremely pedantic.`;
 
-Check ALL of the following:
-1. Does the edit fulfill the user's request completely?
-2. Does the SEARCH block exist VERBATIM in the current file content? (Most important check — if the text is not found, the patch will fail to apply.)
-3. Is the edit minimal? It should only change what's needed, not rewrite unrelated code.
-4. Are there syntax errors, missing imports, or unresolved variables introduced by the edit?
-5. Does the REPLACE block accidentally delete code that should stay?
-
-Be strict. If the SEARCH block text is not found verbatim in the file, that is an automatic FAIL.
-Return JSON: {"isCorrect": boolean, "feedback": "explanation"}`;
-
-/**
- * Reviews a proposed edit block against the file and user prompt.
- * Uses DeepSeek-R1-0528 (reasoning model) for thorough review.
- * @param {{ prompt: string, fileContent: string, filePath: string, proposedEdits: any[] }} params
- * @returns {Promise<{ isCorrect: boolean, feedback: string }>}
- */
 export async function runCritic(params) {
-  const { prompt, fileContent, filePath, proposedEdits } = params;
-  console.log(
-    `[CriticAgent] Reviewing ${filePath} — ${proposedEdits.length} edit(s), fileContent: ${fileContent.length} chars`
-  );
-
-  const userContent = `User Request:
-${prompt}
-
-File Path: ${filePath}
-
-Current File Content:
-\`\`\`
-${fileContent}
-\`\`\`
-
-Proposed Edits:
-\`\`\`json
-${JSON.stringify(proposedEdits, null, 2)}
-\`\`\`
-
-Analyze these edits carefully. Check that each "search" string exists verbatim in the file content. Respond in JSON.`;
+  const { prompt, fileContent, filePath, proposedEdits, runId, options = {} } = params;
 
   try {
-    const responseText = await generateResponse(
-      [
-        { role: 'system', content: criticSystemPrompt },
-        { role: 'user', content: userContent },
-      ],
-      { task: 'critic', jsonMode: true, max_tokens: 2048 }
-    );
-    const response = JSON.parse(responseText);
+    const messages = [
+      { role: 'system', content: criticSystemPrompt },
+      {
+        role: 'user',
+        content: `User Request:\n${prompt}\n\nFile Path:\n${filePath}\n\nCurrent File Content:\n\`\`\`\n${fileContent}\n\`\`\`\n\nProposed Edits:\n\`\`\`json\n${JSON.stringify(proposedEdits, null, 2)}\n\`\`\``,
+      },
+    ];
 
-    console.log(
-      `[CriticAgent] Result: ${response.isCorrect ? '✅ PASS' : '❌ FAIL'} — ${String(response.feedback).substring(0, 80)}`
+    // Get the base response - the router natively executes parallel requests based on ROUTING_STRATEGY.CONSENSUS_VOTE
+    // Note: To fully implement consensus at the *executor* level, we wrap this in our own parallel logic
+    // in Phase 4 to aggregate the boolean results, since `llmRouter.js` only auto-resolves FASTEST_FIRST for now,
+    // and returns the first sequential waterfall result for CONSENSUS_VOTE.
+    
+    // We explicitly implement parallel voting here to enforce the 100% agreement rule.
+    const { route, candidates } = await import('../llm/taskRouter.js').then(m => m.selectRoute(AGENT_TASK_TYPES.PATCH_REVIEW));
+    
+    // Take the primary pool models for the critic (limit to parallelCount)
+    const voters = candidates.slice(0, route.parallelCount || 2);
+    
+    if (voters.length === 0) {
+      throw new Error('No critic models available.');
+    }
+
+    const startMs = Date.now();
+    
+    const votePromises = voters.map(candidate => 
+      generateTaskResponse(messages, {
+        runId,
+        taskType: AGENT_TASK_TYPES.PATCH_REVIEW,
+        routeOverrides: { strategy: ROUTING_STRATEGY.WATERFALL }, // Force single execution for this sub-request
+        model: candidate.modelId, // Explicitly target this voter
+        jsonMode: true,
+        max_tokens: 2048,
+        temperature: 0.0, // Strict deterministic voting
+      }).catch(err => {
+        console.warn(`[CriticAgent] Voter ${candidate.modelId} failed: ${err.message}`);
+        return null;
+      })
     );
-    return {
-      isCorrect: response.isCorrect,
-      feedback: response.feedback,
-    };
+
+    const rawVotes = await Promise.all(votePromises);
+    const validVotes = rawVotes.filter(Boolean).map(v => ({ ...v, data: JSON.parse(v.content) }));
+
+    if (validVotes.length === 0) {
+      // Fallback behavior if all evaluation API calls fail
+      return { isCorrect: false, feedback: '[Consensus Failed] All critics timed out or failed to parse.' };
+    }
+
+    // 100% Agreement logic
+    const allAgree = validVotes.every(vote => vote.data.isCorrect === true);
+    
+    if (allAgree) {
+      return {
+        isCorrect: true,
+        feedback: `Consensus Reached (${validVotes.length}/${validVotes.length} critics approved). ${validVotes[0].data.feedback}`
+      };
+    } else {
+      // Find the dissenting feedback
+      const dissenter = validVotes.find(vote => vote.data.isCorrect === false);
+      return {
+        isCorrect: false,
+        feedback: `[Critic ${dissenter.model}] Rejected Patch: ${dissenter.data.feedback}`
+      };
+    }
+
   } catch (error) {
-    console.error('[CriticAgent] Evaluation failed:', error);
-    return { isCorrect: true, feedback: 'Critic failed to evaluate, passing by default.' };
+    console.error('[CriticAgent] Consensus Evaluation failed:', error);
+    return { isCorrect: false, feedback: `Critic execution failed: ${error.message}` };
   }
 }

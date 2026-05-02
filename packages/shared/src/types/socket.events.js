@@ -6,6 +6,7 @@
 export const SOCKET_EVENTS = {
   // Agent events (AI Panel ↔ Server)
   AGENT_THINKING: 'agent:thinking',
+  AGENT_RUN_STATE: 'agent:run_state',
   AGENT_PLAN: 'agent:plan',
   AGENT_STEP_START: 'agent:step:start',
   AGENT_STEP_CODE: 'agent:step:code',
@@ -16,6 +17,7 @@ export const SOCKET_EVENTS = {
   AGENT_APPROVE: 'agent:approve',
   AGENT_REJECT: 'agent:reject',
   AGENT_CANCEL: 'agent:cancel',
+  AGENT_TERMINATE: 'agent:terminate',
 
   // Execution events (Code Runner ↔ Server)
   EXECUTE: 'execute',

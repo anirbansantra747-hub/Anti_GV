@@ -10,8 +10,10 @@ import StatusBar from './components/StatusBar/StatusBar';
 import QuickOpen from './components/QuickOpen/QuickOpen';
 import SiteShell from './components/Shell/SiteShell.jsx';
 import ToastViewport from './components/Toast/ToastViewport.jsx';
+import LearningPanel from './components/LearningPanel/LearningPanel.jsx';
 import { handleDrop } from './services/localFileService.js';
 import { useSettingsStore } from './stores/settingsStore.js';
+import { Files, Search, GitBranch, PlaySquare, Blocks, CircleUser, Settings } from 'lucide-react';
 
 const SIDEBAR_DEFAULT = 240;
 const AIPANEL_DEFAULT = 380;
@@ -119,6 +121,7 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
   const [cursorPos, setCursorPos] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [quickOpen, setQuickOpen] = useState(false);
+  const [aiPanelOpen, setAiPanelOpen] = useState(true);
   const [fullDragOver, setFullDragOver] = useState(false);
 
   const sidebarStartW = useRef(sidebarW);
@@ -214,9 +217,9 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
     }
   };
 
-  if (route !== '/ide') {
+  if (route !== '/ide' && route !== '/learn') {
     return (
-      <div style={{ height: '100vh', width: '100vw', overflow: 'hidden' }}>
+      <div style={{ height: '100vh', width: '100vw', overflow: 'auto' }}>
         <SiteShell route={route} navigate={navigate} />
         <ToastViewport />
       </div>
@@ -226,6 +229,7 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
   return (
     <div
       className="ide-shell"
+      id="nebula-shell"
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -250,7 +254,13 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
 
       {quickOpen && <QuickOpen onClose={() => setQuickOpen(false)} />}
 
-      <Topbar tabRole={tabRole} recoveredFromIDB={recoveredFromIDB} onNavigate={navigate} />
+      <Topbar
+        tabRole={tabRole}
+        recoveredFromIDB={recoveredFromIDB}
+        onNavigate={navigate}
+        onToggleAIPanel={() => setAiPanelOpen((v) => !v)}
+        aiPanelOpen={aiPanelOpen}
+      />
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
         <div
@@ -263,32 +273,43 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
             background: 'var(--rail-bg)',
             borderRight: '1px solid var(--panel-border)',
             paddingTop: 10,
+            paddingBottom: 10,
             flexShrink: 0,
             zIndex: 10,
           }}
         >
-          <button
-            title="Explorer"
-            onClick={() => setSidebarOpen((v) => !v)}
-            className="activity-button"
-            style={{ color: sidebarOpen ? 'var(--text-primary)' : 'var(--text-muted)' }}
+          <div
+            style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1, width: '100%' }}
           >
-            {sidebarOpen ? <div className="activity-indicator" /> : null}
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="22"
-              height="22"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+            <button
+              title="Explorer"
+              onClick={() => setSidebarOpen((v) => !v)}
+              className="activity-button"
+              style={{ color: sidebarOpen ? 'var(--text-primary)' : 'var(--text-muted)' }}
             >
-              <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
-              <polyline points="14 2 14 8 20 8" />
-            </svg>
-          </button>
+              {sidebarOpen ? <div className="activity-indicator" /> : null}
+              <Files size={24} strokeWidth={1.5} />
+            </button>
+            {/* Hidden icons as requested */}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
+            <button
+              title="Accounts"
+              onClick={() => navigate('/login')}
+              className="activity-button"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              <CircleUser size={24} strokeWidth={1.5} />
+            </button>
+            <button
+              title="Settings"
+              onClick={() => navigate('/settings')}
+              className="activity-button"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              <Settings size={24} strokeWidth={1.5} />
+            </button>
+          </div>
         </div>
 
         {sidebarOpen && (
@@ -368,9 +389,23 @@ export default function App({ recoveredFromIDB = false, tabRole = 'unknown' }) {
           <ResizeHandle direction="horizontal" onResize={onAiPanelResize} />
         </div>
 
-        <div style={{ width: aiPanelW, minWidth: aiPanelW, overflow: 'hidden' }}>
-          <AIPanel />
-        </div>
+        {aiPanelOpen && (
+          <div
+            style={{
+              width: aiPanelW,
+              minWidth: aiPanelW,
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            {route === '/learn' ? (
+              <LearningPanel onClose={() => navigate('/ide')} />
+            ) : (
+              <AIPanel onClose={() => setAiPanelOpen(false)} />
+            )}
+          </div>
+        )}
       </div>
 
       <StatusBar tabRole={tabRole} isConnected={isConnected} cursorPos={cursorPos} />

@@ -240,8 +240,11 @@ class DiffService {
         }
       }
       if (node.type !== 'file' || !blobStore.exists(node.blobId)) {
-        console.error(`[DiffService] Validation failed — blob missing for: ${filePath}`);
-        return false;
+        console.warn(`[DiffService] Validation Warn — blob missing for: ${filePath}. Removing from patch.`);
+        // Remove from patchedPaths so we don't try to sync a non-existent file
+        tx.patchedPaths = tx.patchedPaths.filter(p => p !== filePath);
+        // We do *not* return false here so the transaction can still commit other valid files.
+        continue;
       }
     }
     console.log(`[DiffService] Transaction ${txId} validated ✅`);
