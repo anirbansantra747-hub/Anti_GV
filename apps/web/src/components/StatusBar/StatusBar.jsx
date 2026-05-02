@@ -56,21 +56,20 @@ export default function StatusBar({ tabRole = 'unknown', isConnected = false, cu
   const lang = getLang(activeFile);
   const stateColor = STATE_COLORS[workspaceState] || 'var(--green)';
   const online = socketConnected || isConnected;
-  const connColor = online ? 'var(--green)' : 'var(--red)';
+  const connColor = online ? '#ffffff' : '#ffcccc';
 
   const cellStyle = {
     display: 'flex',
     alignItems: 'center',
     gap: 6,
-    padding: '0 12px',
+    padding: '0 8px',
     height: '100%',
-    borderRight: '1px solid var(--panel-border)',
-    cursor: 'default',
+    cursor: 'pointer',
     whiteSpace: 'nowrap',
-    transition: 'background 0s',
+    transition: 'background 0.1s',
     fontSize: 12,
-    fontWeight: 500,
-    color: 'var(--text-muted)',
+    fontWeight: 400,
+    color: '#ffffff',
     letterSpacing: '0',
   };
 
@@ -78,14 +77,15 @@ export default function StatusBar({ tabRole = 'unknown', isConnected = false, cu
     <div
       id="status-bar"
       style={{
-        height: 'var(--statusbar-h)',
-        background: 'var(--panel-bg)',
-        borderTop: '1px solid var(--panel-border)',
+        height: 22,
+        background: '#007acc',
+        color: '#ffffff',
         display: 'flex',
         alignItems: 'center',
         flexShrink: 0,
         overflow: 'hidden',
         userSelect: 'none',
+        fontSize: 12,
       }}
     >
       {/* ── Left items ──────────────────────────────────────────── */}
@@ -94,8 +94,6 @@ export default function StatusBar({ tabRole = 'unknown', isConnected = false, cu
       <div
         style={{
           ...cellStyle,
-          background: `${connColor}10`,
-          borderRight: `1px solid ${connColor}20`,
           color: connColor,
         }}
         title={online ? 'Server connected' : 'Server disconnected'}
@@ -115,7 +113,7 @@ export default function StatusBar({ tabRole = 'unknown', isConnected = false, cu
       </div>
 
       {/* Workspace state */}
-      <div style={{ ...cellStyle, color: stateColor }} title={`Workspace state: ${workspaceState}`}>
+      <div style={{ ...cellStyle, color: '#ffffff' }} title={`Workspace state: ${workspaceState}`}>
         <span
           style={{
             width: 5,
@@ -130,10 +128,7 @@ export default function StatusBar({ tabRole = 'unknown', isConnected = false, cu
       </div>
 
       {/* Tab role (dev only) */}
-      <div
-        style={{ ...cellStyle, fontFamily: 'var(--font-mono)' }}
-        title="Tab role (master writes, slave mirrors)"
-      >
+      <div style={{ ...cellStyle }} title="Tab role (master writes, slave mirrors)">
         {tabRole.toUpperCase()}
       </div>
 
@@ -147,9 +142,6 @@ export default function StatusBar({ tabRole = 'unknown', isConnected = false, cu
         <div
           style={{
             ...cellStyle,
-            borderLeft: '1px solid var(--panel-border)',
-            borderRight: 'none',
-            fontFamily: 'var(--font-mono)',
           }}
         >
           Ln {cursorPos.lineNumber}, Col {cursorPos.column}
@@ -161,10 +153,7 @@ export default function StatusBar({ tabRole = 'unknown', isConnected = false, cu
         <div
           style={{
             ...cellStyle,
-            borderLeft: '1px solid var(--panel-border)',
-            borderRight: 'none',
-            color: 'var(--accent)',
-            fontWeight: 600,
+            fontWeight: 400,
           }}
         >
           {lang}
@@ -172,11 +161,7 @@ export default function StatusBar({ tabRole = 'unknown', isConnected = false, cu
       )}
 
       {/* UTF-8 label */}
-      <div
-        style={{ ...cellStyle, borderLeft: '1px solid var(--panel-border)', borderRight: 'none' }}
-      >
-        UTF-8
-      </div>
+      <div style={{ ...cellStyle }}>UTF-8</div>
     </div>
   );
 }

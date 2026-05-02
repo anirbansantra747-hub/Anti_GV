@@ -39,15 +39,14 @@ Anti_GV is built as a **5-module system** inside the browser
 
 ### Tech Stack
 
-| Layer          | Technology                                           | Cost      |
-| -------------- | ---------------------------------------------------- | --------- |
-| Frontend       | React 18, Monaco Editor, Zustand, memfs, localForage | Free      |
-| Backend        | Node.js, Express, Socket.io, JWT                     | Free      |
-| Database       | MongoDB Atlas (M0 free), ChromaDB                    | Free      |
-| AI/LLM         | Groq API (Llama 3.3 70B), Gemini Flash (fallback)    | Free      |
-| Vectors        | Nomic Embed v1.5                                     | Free      |
-| Code Execution | Pyodide (Python WASM), WebContainers (JS), Judge0 CE | Free      |
-| Hosting        | Vercel (frontend), Railway (backend)                 | Free tier |
+| Layer          | Technology                                          | Cost      |
+| -------------- | --------------------------------------------------- | --------- |
+| Frontend       | React 18, Vite, Monaco, Zustand, memfs, localForage | Free      |
+| Backend        | Node.js, Express, Socket.io, MongoDB, ChromaDB      | Free      |
+| AI/LLM         | Groq, NVIDIA NIM, GitHub Models, Together, Gemini   | Free      |
+| Vectors        | Nomic Embed v1.5                                    | Free      |
+| Code Execution | Pyodide (WASM), WebContainers (WASM), Judge0 CE     | Free      |
+| Hosting        | Vercel (frontend), Render (backend)                 | Free tier |
 
 ---
 
@@ -464,18 +463,15 @@ _(See HLD architecture document for full details)_
 ## 🚀 Project Setup
 
 ```bash
-# Clone
-git clone https://github.com/<your-repo>/Anti_GV.git
-cd Anti_GV
+# Monorepo Root
+pnpm install
 
 # Frontend
-cd frontend
-npm install
+cd apps/web
 npm run dev          # → http://localhost:5173
 
 # Backend
-cd ../backend
-npm install
+cd apps/server
 cp .env.example .env  # Add your API keys
 npm run dev          # → http://localhost:3001
 ```

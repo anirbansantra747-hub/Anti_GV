@@ -24,6 +24,8 @@ import {
   ChevronDown,
   ChevronRight,
   Activity,
+  Plus,
+  MoreHorizontal,
 } from 'lucide-react';
 import { useAgentStore } from '../../stores/agentStore';
 import { useEditorStore } from '../../stores/editorStore.js';
@@ -1036,7 +1038,7 @@ function GroupReviewItem({ groupId, files, meta, isSelected, onToggle }) {
 
 /* ────────────────────────── Main Panel ────────────────────────── */
 
-export default function AIPanel() {
+export default function AIPanel({ onClose }) {
   const {
     connect,
     disconnect,
@@ -1207,176 +1209,35 @@ export default function AIPanel() {
       {/* Header */}
       <div
         style={{
-          padding: '14px 18px 12px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          borderBottom: '1px solid var(--panel-border)',
-          background: 'rgba(8,12,18,0.9)',
-        }}
-      >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Cpu size={18} color="var(--accent)" strokeWidth={2} />
-            <h2
-              style={{
-                fontSize: 14,
-                fontWeight: 700,
-                margin: 0,
-                color: 'var(--text-primary)',
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
-              }}
-            >
-              AI Agent
-            </h2>
-          </div>
-          <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-            {activeFile ? `Focused on ${activeFile}` : 'No active file selected'}
-          </span>
-          <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{source.description}</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingTop: 4 }}>
-          <div
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: '50%',
-              background: isConnected ? '#10b981' : '#ef4444',
-              boxShadow: `0 0 8px ${isConnected ? '#10b981' : '#ef4444'}`,
-            }}
-          />
-          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>
-            {isConnected ? 'ONLINE' : 'OFFLINE'}
-          </span>
-        </div>
-      </div>
-
-      {/* Chat selector */}
-      <div
-        style={{
           padding: '10px 14px',
           borderBottom: '1px solid var(--panel-border)',
-          background: 'rgba(0,0,0,0.2)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-        }}
-      >
-        <select
-          value={activeChatId || ''}
-          onChange={(e) => switchChat(e.target.value)}
-          disabled={isChatLoading || !isConnected}
-          style={{
-            flex: 1,
-            background: 'var(--app-bg)',
-            border: '1px solid var(--panel-border)',
-            color: 'var(--text-primary)',
-            padding: '6px 8px',
-            fontSize: 12,
-          }}
-        >
-          {chats.length === 0 && <option value="">No chats</option>}
-          {chats.map((c) => (
-            <option key={c.chatId} value={c.chatId}>
-              {c.title || 'Untitled'}
-            </option>
-          ))}
-        </select>
-        <button
-          onClick={createChat}
-          disabled={!isConnected || isChatLoading}
-          style={{
-            background: 'var(--accent)',
-            color: '#000',
-            border: 'none',
-            padding: '6px 10px',
-            fontSize: 11,
-            fontWeight: 700,
-            letterSpacing: '0.06em',
-            cursor: !isConnected || isChatLoading ? 'not-allowed' : 'pointer',
-          }}
-        >
-          New
-        </button>
-      </div>
-
-      {/* Pipeline Timeline */}
-      <PipelineTimeline phases={pipelinePhases} />
-
-      {/* Provider Health */}
-      {controlPlane?.health && (
-        <div
-          style={{
-            padding: '8px 14px',
-            borderBottom: '1px solid var(--panel-border)',
-            background: 'rgba(3,7,18,0.6)',
-            display: 'flex',
-            gap: 6,
-            flexWrap: 'wrap',
-          }}
-        >
-          {Object.entries(controlPlane.health).map(([provider, state]) => (
-            <span
-              key={provider}
-              style={{
-                fontSize: 9,
-                padding: '3px 6px',
-                color: state.availabilityState === 'healthy' ? '#4ade80' : '#fbbf24',
-                border: `1px solid ${state.availabilityState === 'healthy' ? 'rgba(16,185,129,0.2)' : 'rgba(251,191,36,0.2)'}`,
-                background: 'rgba(15,23,42,0.5)',
-              }}
-            >
-              {provider}: {state.availabilityState}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* Index Status */}
-      <div
-        style={{
-          padding: '8px 14px',
-          borderBottom: '1px solid var(--panel-border)',
-          background: 'rgba(0,0,0,0.18)',
+          background: 'var(--panel-bg)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: 12,
         }}
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span
-            style={{
-              fontSize: 10,
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              color: 'var(--text-muted)',
-            }}
+        <span style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+          Building Landing Page Authentication
+        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)' }}>
+          <button
+            style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}
           >
-            Index
-          </span>
-          <span style={{ fontSize: 11, color: 'var(--text-primary)' }}>
-            {indexStatus.chunksStored} chunks / {indexStatus.inventoryCount} files
-          </span>
+            <Plus size={14} />
+          </button>
+          <button
+            style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}
+          >
+            <MoreHorizontal size={14} />
+          </button>
+          <button
+            onClick={onClose}
+            style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}
+          >
+            <X size={14} />
+          </button>
         </div>
-        <button
-          onClick={handleReindex}
-          disabled={indexStatus.loading || !isConnected}
-          style={{
-            background:
-              indexStatus.loading || !isConnected ? 'var(--panel-border)' : 'var(--accent)',
-            color: indexStatus.loading || !isConnected ? 'var(--text-muted)' : '#000',
-            border: 'none',
-            padding: '4px 10px',
-            fontSize: 10,
-            fontWeight: 700,
-            letterSpacing: '0.06em',
-            cursor: indexStatus.loading || !isConnected ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {indexStatus.loading ? '...' : 'Reindex'}
-        </button>
       </div>
 
       {/* Messages Area */}
@@ -1646,56 +1507,119 @@ export default function AIPanel() {
       {/* Input */}
       <div
         style={{
-          padding: '14px 18px 18px',
+          padding: '12px 14px',
           borderTop: '1px solid var(--panel-border)',
-          background: 'rgba(7,10,16,0.92)',
+          background: 'var(--panel-bg)',
         }}
       >
         <form
           onSubmit={handleSubmit}
           style={{
             display: 'flex',
-            gap: 10,
-            background: 'rgba(15,23,42,0.9)',
+            flexDirection: 'column',
+            background: 'var(--app-bg)',
             border: '1px solid var(--panel-border)',
-            padding: '8px 8px 8px 14px',
+            borderRadius: '4px',
+            overflow: 'hidden',
           }}
         >
-          <input
-            type="text"
+          <textarea
             value={inputMsg}
             onChange={(e) => setInputMsg(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSubmit(e);
+              }
+            }}
             disabled={isThinking || !isConnected}
-            placeholder={isConnected ? 'Ask for a precise edit...' : 'Connecting...'}
+            placeholder={
+              isConnected ? 'Ask anything, @ to mention, / for workflows' : 'Connecting...'
+            }
+            rows={2}
             style={{
-              flex: 1,
+              width: '100%',
               background: 'transparent',
               border: 'none',
               color: 'var(--text-primary)',
               outline: 'none',
-              fontSize: 14,
+              fontSize: 13,
+              padding: '10px 10px 0 10px',
+              resize: 'none',
+              fontFamily: 'var(--font-ui)',
             }}
           />
-          <button
-            type="submit"
-            disabled={isThinking || !inputMsg.trim() || !isConnected}
+          <div
             style={{
-              background:
-                isThinking || !inputMsg.trim() || !isConnected
-                  ? 'var(--panel-border)'
-                  : 'var(--accent)',
-              color:
-                isThinking || !inputMsg.trim() || !isConnected ? 'var(--text-muted)' : '#041014',
-              border: 'none',
-              width: 38,
-              height: 38,
-              display: 'grid',
-              placeItems: 'center',
-              cursor: isThinking || !inputMsg.trim() || !isConnected ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '6px 8px',
             }}
           >
-            <Send size={16} strokeWidth={3} />
-          </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                type="button"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+              >
+                <Plus size={16} />
+              </button>
+              <button
+                type="button"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-secondary)',
+                  fontSize: 11,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+              >
+                Model <ChevronDown size={12} />
+              </button>
+              <button
+                type="button"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-secondary)',
+                  fontSize: 11,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+              >
+                <FileCode size={12} /> Strategy
+              </button>
+            </div>
+            <button
+              type="submit"
+              disabled={isThinking || !inputMsg.trim() || !isConnected}
+              style={{
+                background: 'transparent',
+                color:
+                  isThinking || !inputMsg.trim() || !isConnected
+                    ? 'var(--text-muted)'
+                    : 'var(--text-primary)',
+                border: 'none',
+                cursor: isThinking || !inputMsg.trim() || !isConnected ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+              }}
+            >
+              <Send size={16} />
+            </button>
+          </div>
         </form>
       </div>
     </div>

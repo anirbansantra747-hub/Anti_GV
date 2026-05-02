@@ -23,7 +23,7 @@ import { executeCode } from '../../services/execution/executionService.js';
 import { fileSystemAPI } from '../../services/fileSystemAPI.js';
 import { contextService } from '../../services/contextService.js';
 
-const TABS = ['TERMINAL', 'OUTPUT', 'PROBLEMS'];
+const TABS = ['Terminal', 'Output', 'Problems'];
 
 // ── Severity badge colours (OKLCH-inspired) ────────────────────────────────
 const SEVERITY_COLORS = {
@@ -35,16 +35,16 @@ const SEVERITY_COLORS = {
 const TAB_BASE = {
   background: 'transparent',
   border: 'none',
-  borderBottom: '3px solid transparent',
+  borderBottom: '1px solid transparent',
   color: 'var(--text-muted)',
   fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: '0.1em',
-  textTransform: 'uppercase',
-  padding: '0 14px',
+  fontWeight: 400,
+  letterSpacing: '0',
+  textTransform: 'none',
+  padding: '0 8px',
   height: '100%',
   cursor: 'pointer',
-  transition: 'color 0.1s, border-color 0.1s',
+  transition: 'color 0.1s',
   fontFamily: 'var(--font-ui)',
   display: 'flex',
   alignItems: 'center',
@@ -53,8 +53,8 @@ const TAB_BASE = {
 
 const TAB_ACTIVE = {
   ...TAB_BASE,
-  color: 'var(--accent)',
-  borderBottom: '3px solid var(--accent)',
+  color: '#ffffff',
+  borderBottom: '1px solid #ffffff',
 };
 
 export default function TerminalPane() {
@@ -68,7 +68,7 @@ export default function TerminalPane() {
   const activeFile = useEditorStore((state) => state.activeFile);
 
   const [isSpawned, setIsSpawned] = useState(false);
-  const [activeTab, setActiveTab] = useState('TERMINAL');
+  const [activeTab, setActiveTab] = useState('Terminal');
   const [outputLines, setOutputLines] = useState([]);
   const [isRunning, setIsRunning] = useState(false);
   const [problems, setProblems] = useState([]);
@@ -301,7 +301,7 @@ export default function TerminalPane() {
     const onAgentTerminalRun = (payload) => {
       if (payload?.command) {
         console.log(`[TerminalPane] AI requested to run command: ${payload.command}`);
-        setActiveTab('TERMINAL');
+        setActiveTab('Terminal');
         socket.emit('terminal:input', { input: `${payload.command}\r` });
       }
     };
@@ -330,7 +330,7 @@ export default function TerminalPane() {
 
     setOutputLines([]);
     setProblems([]);
-    setActiveTab('OUTPUT');
+    setActiveTab('Output');
     setIsRunning(true);
 
     const handleOutput = (text) => setOutputLines((p) => [...p, { type: 'stdout', text }]);
@@ -372,14 +372,14 @@ export default function TerminalPane() {
           alignItems: 'stretch',
           borderBottom: '1px solid var(--panel-border)',
           padding: '0 8px',
-          gap: 2,
+          gap: 16,
           flexShrink: 0,
-          height: 38,
-          background: 'var(--panel-bg)',
+          height: 35,
+          background: 'var(--app-bg)',
         }}
       >
         {TABS.map((tab) => {
-          const hasBadge = tab === 'PROBLEMS' && problems.length > 0;
+          const hasBadge = tab === 'Problems' && problems.length > 0;
           const isActive = activeTab === tab;
           return (
             <button
@@ -503,14 +503,14 @@ export default function TerminalPane() {
           flex: 1,
           padding: '8px 4px 4px 4px',
           overflow: 'hidden',
-          display: activeTab === 'TERMINAL' ? 'block' : 'none',
+          display: activeTab === 'Terminal' ? 'block' : 'none',
           minHeight: 0,
         }}
         ref={terminalRef}
       />
 
       {/* ── OUTPUT TAB ── */}
-      {activeTab === 'OUTPUT' && (
+      {activeTab === 'Output' && (
         <div
           style={{
             flex: 1,
@@ -597,7 +597,7 @@ export default function TerminalPane() {
       )}
 
       {/* ── PROBLEMS TAB ── */}
-      {activeTab === 'PROBLEMS' && (
+      {activeTab === 'Problems' && (
         <div
           style={{
             flex: 1,

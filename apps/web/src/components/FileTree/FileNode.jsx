@@ -167,7 +167,11 @@ export default function FileNode({ node, style, dragHandle }) {
   };
 
   const handleDelete = () => {
-    if (!window.confirm(`Are you sure you want to delete "${node.data.name}"? This action cannot be undone.`)) {
+    if (
+      !window.confirm(
+        `Are you sure you want to delete "${node.data.name}"? This action cannot be undone.`
+      )
+    ) {
       return;
     }
 
@@ -197,8 +201,8 @@ export default function FileNode({ node, style, dragHandle }) {
           borderRadius: 4,
           cursor: 'pointer',
           userSelect: 'none',
-          background: node.isSelected ? 'rgba(56,189,248,0.12)' : 'transparent',
-          color: node.isSelected ? '#e2e8f0' : '#b0bec5',
+          background: node.isSelected ? '#37373d' : 'transparent',
+          color: node.isSelected ? '#ffffff' : '#cccccc',
           transition: 'all 0.1s ease',
         }}
         ref={dragHandle}
@@ -211,7 +215,7 @@ export default function FileNode({ node, style, dragHandle }) {
           setCtxMenu({ x: e.clientX, y: e.clientY });
         }}
         onMouseEnter={(e) => {
-          if (!node.isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+          if (!node.isSelected) e.currentTarget.style.background = '#2a2d2e';
         }}
         onMouseLeave={(e) => {
           if (!node.isSelected) e.currentTarget.style.background = 'transparent';
@@ -278,7 +282,7 @@ export default function FileNode({ node, style, dragHandle }) {
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
-              color: node.isSelected ? '#e2e8f0' : 'inherit',
+              color: node.isSelected ? '#ffffff' : 'inherit',
             }}
           >
             {node.data.name}
