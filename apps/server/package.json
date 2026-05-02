@@ -6,7 +6,7 @@
   "description": "Anti_GV Backend — API, Agent Service, Execution Engine",
   "scripts": {
     "dev": "node --max-old-space-size=4096 --watch-path=src src/app.js",
-    "start": "node --max-old-space-size=4096 src/app.js",
+    "start": "node src/app.js",
     "build": "echo 'No build step for server'",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
