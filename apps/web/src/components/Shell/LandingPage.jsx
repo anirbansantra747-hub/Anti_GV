@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, Cpu, Terminal as TerminalIcon, Layers, ArrowRight } from 'lucide-react';
+import { Shield, Cpu, Terminal as TerminalIcon, Layers, ArrowRight, Sparkles } from 'lucide-react';
 
 const FeatureBlock = ({ icon: Icon, title, description, delayClass }) => (
   <div
@@ -361,7 +361,7 @@ export default function LandingPage({ navigate }) {
           style={{
             marginTop: '100px',
             paddingTop: '40px',
-            borderTop: '1px solid rgba(255,255,255,0.03)',
+            borderTop: '1px solid rgba(255, 255, 255, 0.03)',
             textAlign: 'center',
           }}
         >
